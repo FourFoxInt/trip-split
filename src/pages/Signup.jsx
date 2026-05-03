@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { supabase } from '../supabase'
 
 export default function Signup() {
   const navigate = useNavigate()
@@ -8,8 +9,9 @@ export default function Signup() {
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
 
-  const handleSignup = () => {
+  const handleSignup = async () => {
     if (!name || !email || !password || !confirmPassword) {
       setError('Please fill in all fields.')
       return
@@ -18,7 +20,24 @@ export default function Signup() {
       setError('Passwords do not match.')
       return
     }
+
+    setLoading(true)
     setError('')
+
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { name }
+      }
+    })
+
+    if (error) {
+      setError(error.message)
+      setLoading(false)
+      return
+    }
+
     navigate('/dashboard')
   }
 
@@ -85,9 +104,10 @@ export default function Signup() {
 
           <button
             onClick={handleSignup}
-            className="w-full bg-blue-600 text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition"
+            disabled={loading}
+            className="w-full bg-blue-600 text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
           >
-            Create Account
+            {loading ? 'Creating account...' : 'Create Account'}
           </button>
 
           <p className="text-center text-sm text-gray-500">

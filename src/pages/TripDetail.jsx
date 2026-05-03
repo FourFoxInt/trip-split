@@ -1,86 +1,139 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-
-const dummyTrip = {
-  name: "Taylor Swift Concert",
-  date: "2025-08-15",
-  weeks: 12,
-  members: ["Alice", "Beth", "Carol", "Dana", "Eve"],
-  costs: [
-    { label: "Petrol", total: 600, splitType: "group" },
-    { label: "Accommodation", total: 2350, splitType: "per person" },
-    { label: "Food (per day)", total: 400, splitType: "per person" },
-  ]
-}
-
-const dummyFeed = [
-  { id: 1, author: "Alice", message: "So excited for this trip!", timestamp: "2025-05-01 10:23" },
-  { id: 2, author: "Beth", message: "Me too! I just made my first payment", timestamp: "2025-05-01 11:45" },
-  { id: 3, author: "Carol", message: "Has everyone sorted accommodation?", timestamp: "2025-05-02 09:12" },
-]
-
-const dummyPayments = [
-  { id: 1, author: "Alice", amount: 67.00, timestamp: "2025-05-01 10:00" },
-  { id: 2, author: "Beth", amount: 67.00, timestamp: "2025-05-03 14:30" },
-  { id: 3, author: "Alice", amount: 67.00, timestamp: "2025-05-08 09:15" },
-]
+import { useState, useEffect } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
+import { supabase } from '../supabase'
 
 export default function TripDetail() {
   const navigate = useNavigate()
-  const currentUser = { name: "Alice", isAdmin: true }
+  const { id } = useParams()
+
+  const [trip, setTrip] = useState(null)
+  const [costs, setCosts] = useState([])
+  const [members, setMembers] = useState([])
+  const [payments, setPayments] = useState([])
+  const [feed, setFeed] = useState([])
+  const [currentUser, setCurrentUser] = useState(null)
+  const [loading, setLoading] = useState(true)
 
   const [schedule, setSchedule] = useState('Weekly')
-  const [feed, setFeed] = useState(dummyFeed)
   const [newComment, setNewComment] = useState('')
-  const [payments, setPayments] = useState(dummyPayments)
   const [newPayment, setNewPayment] = useState('')
   const [selectedMember, setSelectedMember] = useState('')
 
   const [showCosts, setShowCosts] = useState(true)
   const [showSchedule, setShowSchedule] = useState(true)
   const [showPayments, setShowPayments] = useState(true)
+  const [showHistory, setShowHistory] = useState(true)
   const [showMembers, setShowMembers] = useState(true)
   const [showFeed, setShowFeed] = useState(true)
-  const [showHistory, setShowHistory] = useState(true)
 
-  const totalCost = dummyTrip.costs.reduce((sum, c) => sum + c.total, 0)
-  const perPerson = totalCost / dummyTrip.members.length
+  useEffect(() => {
+    const loadData = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      const userId = session.user.id
+
+      const { data: tripData } = await supabase
+        .from('trips')
+        .select('*')
+        .eq('id', id)
+        .single()
+      setTrip(tripData)
+
+      const { data: costsData } = await supabase
+        .from('trip_costs')
+        .select('*')
+        .eq('trip_id', id)
+      setCosts(costsData || [])
+
+      const { data: membersData } = await supabase
+        .from('trip_members')
+        .select('*, profiles(name, email)')
+        .eq('trip_id', id)
+      setMembers(membersData || [])
+
+      const isAdmin = membersData?.find(m => m.user_id === userId)?.is_admin || false
+      setCurrentUser({ id: userId, isAdmin })
+
+      const { data: paymentsData } = await supabase
+        .from('payments')
+        .select('*, profiles(name)')
+        .eq('trip_id', id)
+      setPayments(paymentsData || [])
+
+      const { data: feedData } = await supabase
+        .from('feed_posts')
+        .select('*, profiles(name)')
+        .eq('trip_id', id)
+        .order('created_at', { ascending: true })
+      setFeed(feedData || [])
+
+      setLoading(false)
+    }
+
+    loadData()
+  }, [id])
+
+  const totalCost = costs.reduce((sum, c) => {
+    const amount = parseFloat(c.amount) || 0
+    if (c.split_type === 'group') return sum + amount
+    if (c.split_type === 'per person') return sum + amount * (members.length || 1)
+    if (c.split_type === 'per person per day') return sum + amount * (members.length || 1) * (trip?.trip_length_days || 1)
+    if (c.split_type === 'group per day') return sum + amount * (trip?.trip_length_days || 1)
+    return sum + amount
+  }, 0)
+
+  const perPerson = members.length > 0 ? totalCost / members.length : 0
 
   const getPaymentAmount = () => {
-    if (schedule === 'Weekly') return (perPerson / dummyTrip.weeks).toFixed(2)
-    if (schedule === 'Fortnightly') return (perPerson / (dummyTrip.weeks / 2)).toFixed(2)
-    if (schedule === 'Monthly') return (perPerson / (dummyTrip.weeks / 4)).toFixed(2)
+    const weeks = trip?.weeks_until || 1
+    if (schedule === 'Weekly') return (perPerson / weeks).toFixed(2)
+    if (schedule === 'Fortnightly') return (perPerson / (weeks / 2)).toFixed(2)
+    if (schedule === 'Monthly') return (perPerson / (weeks / 4)).toFixed(2)
   }
 
   const getPaymentCount = () => {
-    if (schedule === 'Weekly') return dummyTrip.weeks
-    if (schedule === 'Fortnightly') return dummyTrip.weeks / 2
-    if (schedule === 'Monthly') return Math.ceil(dummyTrip.weeks / 4)
+    const weeks = trip?.weeks_until || 1
+    if (schedule === 'Weekly') return weeks
+    if (schedule === 'Fortnightly') return weeks / 2
+    if (schedule === 'Monthly') return Math.ceil(weeks / 4)
   }
 
-  const addComment = () => {
+  const addComment = async () => {
     if (!newComment.trim()) return
-    setFeed([...feed, {
-      id: feed.length + 1,
-      author: "Me",
-      message: newComment,
-      timestamp: new Date().toLocaleString()
-    }])
     setNewComment('')
+    await supabase
+      .from('feed_posts')
+      .insert({ trip_id: id, user_id: currentUser.id, message: newComment })
+
+    const { data: refreshedFeed } = await supabase
+      .from('feed_posts')
+      .select('*, profiles(name)')
+      .eq('trip_id', id)
+      .order('created_at', { ascending: true })
+    setFeed(refreshedFeed || [])
   }
 
-  const addPayment = () => {
-    if (!newPayment || isNaN(newPayment)) return
-    const author = currentUser.isAdmin ? selectedMember || currentUser.name : currentUser.name
-    setPayments([...payments, {
-      id: payments.length + 1,
-      author,
-      amount: parseFloat(newPayment),
-      timestamp: new Date().toLocaleString()
-    }])
-    setNewPayment('')
-    setSelectedMember('')
-  }
+  const addPayment = async () => {
+  if (!newPayment || isNaN(newPayment)) return
+  const targetUserId = currentUser.isAdmin && selectedMember ? selectedMember : currentUser.id
+  setNewPayment('')
+  setSelectedMember('')
+  
+  await supabase
+    .from('payments')
+    .insert({ trip_id: id, user_id: targetUserId, amount: parseFloat(newPayment) })
+
+  const { data: refreshedPayments } = await supabase
+    .from('payments')
+    .select('*, profiles(name)')
+    .eq('trip_id', id)
+  setPayments(refreshedPayments || [])
+}
+
+  if (loading) return (
+    <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+      <p className="text-gray-400">Loading...</p>
+    </div>
+  )
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -96,8 +149,8 @@ export default function TripDetail() {
 
         {/* Trip Header */}
         <div className="bg-white rounded-2xl shadow p-6">
-          <h2 className="text-2xl font-bold text-gray-800">{dummyTrip.name}</h2>
-          <p className="text-gray-400 text-sm mt-1">{dummyTrip.date} · {dummyTrip.members.length} members</p>
+          <h2 className="text-2xl font-bold text-gray-800">{trip?.name}</h2>
+          <p className="text-gray-400 text-sm mt-1">{trip?.start_date} → {trip?.end_date} · {trip?.trip_length_days} days · {members.length} members</p>
         </div>
 
         {/* Cost Breakdown */}
@@ -109,13 +162,13 @@ export default function TripDetail() {
           {showCosts && (
             <div>
               <div className="space-y-3">
-                {dummyTrip.costs.map((cost, i) => (
+                {costs.map((cost, i) => (
                   <div key={i} className="flex justify-between items-center border-b pb-2 last:border-0">
                     <div>
                       <p className="font-medium text-gray-700">{cost.label}</p>
-                      <p className="text-xs text-gray-400">{cost.splitType}</p>
+                      <p className="text-xs text-gray-400">{cost.split_type}</p>
                     </div>
-                    <p className="font-semibold text-gray-800">${cost.total}</p>
+                    <p className="font-semibold text-gray-800">${cost.amount}</p>
                   </div>
                 ))}
               </div>
@@ -168,14 +221,14 @@ export default function TripDetail() {
             <div>
               {currentUser.isAdmin ? (
                 <div className="space-y-3 mb-6">
-                  {dummyTrip.members.map((member, i) => {
-                    const paid = payments.filter(p => p.author === member).reduce((sum, p) => sum + p.amount, 0)
+                  {members.map((member, i) => {
+                    const paid = payments.filter(p => p.user_id === member.user_id).reduce((sum, p) => sum + p.amount, 0)
                     const remaining = perPerson - paid
                     const percent = Math.min((paid / perPerson) * 100, 100).toFixed(0)
                     return (
                       <div key={i}>
                         <div className="flex justify-between items-center mb-1">
-                          <p className="text-sm font-medium text-gray-700">{member}</p>
+                          <p className="text-sm font-medium text-gray-700">{member.profiles?.name}</p>
                           <p className="text-sm text-gray-500">${paid.toFixed(2)} of ${perPerson.toFixed(2)}</p>
                         </div>
                         <div className="w-full bg-gray-100 rounded-full h-2">
@@ -194,20 +247,23 @@ export default function TripDetail() {
                     <div className="flex justify-between items-center mb-1">
                       <p className="text-sm font-medium text-gray-700">Your payments</p>
                       <p className="text-sm text-gray-500">
-                        ${payments.filter(p => p.author === currentUser.name).reduce((sum, p) => sum + p.amount, 0).toFixed(2)} of ${perPerson.toFixed(2)}
+                        ${payments.filter(p => p.user_id === currentUser.id).reduce((sum, p) => sum + p.amount, 0).toFixed(2)} of ${perPerson.toFixed(2)}
                       </p>
                     </div>
                     <div className="w-full bg-gray-100 rounded-full h-2">
                       <div
                         className="bg-blue-500 h-2 rounded-full transition-all"
-                        style={{ width: `${Math.min((payments.filter(p => p.author === currentUser.name).reduce((sum, p) => sum + p.amount, 0) / perPerson) * 100, 100).toFixed(0)}%` }}
+                        style={{ width: `${Math.min((payments.filter(p => p.user_id === currentUser.id).reduce((sum, p) => sum + p.amount, 0) / perPerson) * 100, 100).toFixed(0)}%` }}
                       />
                     </div>
                   </div>
                   <div className="bg-gray-50 rounded-xl p-3 text-center">
                     <p className="text-sm text-gray-500">Group progress</p>
                     <p className="text-lg font-bold text-blue-600">
-                      {payments.filter(p => p.amount >= perPerson).length} of {dummyTrip.members.length} fully paid
+                      {members.filter(member => {
+                        const paid = payments.filter(p => p.user_id === member.user_id).reduce((sum, p) => sum + p.amount, 0)
+                        return paid >= perPerson
+                      }).length} of {members.length} fully paid
                     </p>
                   </div>
                 </div>
@@ -224,8 +280,8 @@ export default function TripDetail() {
                       className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       <option value="" disabled>Select member</option>
-                      {dummyTrip.members.map((member, i) => (
-                        <option key={i} value={member}>{member}</option>
+                      {members.map((member, i) => (
+                        <option key={i} value={member.user_id}>{member.profiles?.name}</option>
                       ))}
                     </select>
                   )}
@@ -261,13 +317,13 @@ export default function TripDetail() {
                 <p className="text-gray-400 text-sm text-center">No payments yet.</p>
               ) : (
                 [...payments]
-                  .filter(p => currentUser.isAdmin ? true : p.author === currentUser.name)
+                  .filter(p => currentUser.isAdmin ? true : p.user_id === currentUser.id)
                   .reverse()
                   .map((payment, i) => (
                     <div key={i} className="flex justify-between items-center border-b pb-2 last:border-0">
                       <div>
-                        <p className="text-sm font-medium text-gray-700">{payment.author}</p>
-                        <p className="text-xs text-gray-400">{payment.timestamp}</p>
+                        <p className="text-sm font-medium text-gray-700">{payment.profiles?.name}</p>
+                        <p className="text-xs text-gray-400">{new Date(payment.created_at).toLocaleString()}</p>
                       </div>
                       <p className="text-sm font-bold text-green-600">+${payment.amount.toFixed(2)}</p>
                     </div>
@@ -277,7 +333,7 @@ export default function TripDetail() {
                 <p className="text-sm font-semibold text-gray-700">Total collected</p>
                 <p className="text-sm font-bold text-blue-600">
                   ${payments
-                    .filter(p => currentUser.isAdmin ? true : p.author === currentUser.name)
+                    .filter(p => currentUser.isAdmin ? true : p.user_id === currentUser.id)
                     .reduce((sum, p) => sum + p.amount, 0).toFixed(2)}
                 </p>
               </div>
@@ -293,10 +349,12 @@ export default function TripDetail() {
           </button>
           {showMembers && (
             <div className="space-y-2">
-              {dummyTrip.members.map((member, i) => (
+              {members.map((member, i) => (
                 <div key={i} className="flex justify-between items-center">
-                  <p className="text-gray-700">{member}</p>
-                  <span className="text-xs bg-yellow-100 text-yellow-600 px-2 py-1 rounded-full">Pending</span>
+                  <p className="text-gray-700">{member.profiles?.name}</p>
+                  <span className={`text-xs px-2 py-1 rounded-full ${member.is_admin ? 'bg-blue-100 text-blue-600' : 'bg-yellow-100 text-yellow-600'}`}>
+                    {member.is_admin ? 'Admin' : 'Member'}
+                  </span>
                 </div>
               ))}
             </div>
@@ -312,20 +370,24 @@ export default function TripDetail() {
           {showFeed && (
             <div>
               <div className="space-y-4 mb-6">
-                {feed.map(post => (
-                  <div key={post.id} className="flex gap-3">
-                    <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-600 font-bold flex items-center justify-center text-sm flex-shrink-0">
-                      {post.author[0]}
-                    </div>
-                    <div className="bg-gray-50 rounded-xl px-4 py-3 flex-1">
-                      <div className="flex justify-between items-center mb-1">
-                        <p className="text-sm font-semibold text-gray-700">{post.author}</p>
-                        <p className="text-xs text-gray-400">{post.timestamp}</p>
+                {feed.length === 0 ? (
+                  <p className="text-gray-400 text-sm text-center">No posts yet. Say something!</p>
+                ) : (
+                  feed.map(post => (
+                    <div key={post.id} className="flex gap-3">
+                      <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-600 font-bold flex items-center justify-center text-sm flex-shrink-0">
+                        {post.profiles?.name?.[0]}
                       </div>
-                      <p className="text-sm text-gray-600">{post.message}</p>
+                      <div className="bg-gray-50 rounded-xl px-4 py-3 flex-1">
+                        <div className="flex justify-between items-center mb-1">
+                          <p className="text-sm font-semibold text-gray-700">{post.profiles?.name}</p>
+                          <p className="text-xs text-gray-400">{new Date(post.created_at).toLocaleString()}</p>
+                        </div>
+                        <p className="text-sm text-gray-600">{post.message}</p>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
               <div className="flex gap-2">
                 <input

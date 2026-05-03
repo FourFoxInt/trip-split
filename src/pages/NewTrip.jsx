@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { supabase } from '../supabase'
 
 export default function NewTrip() {
   const navigate = useNavigate()
@@ -28,6 +29,11 @@ export default function NewTrip() {
   }
 
   const handleCreate = () => {
+    if (!tripName || !startDate || !endDate || !members) {
+      alert('Please fill in all fields.')
+      return
+    }
+
     const memberList = members.split(',').map(m => m.trim()).filter(m => m !== '')
     const numMembers = memberList.length || 1
 
@@ -63,6 +69,71 @@ export default function NewTrip() {
       fortnightly: (perPerson / (weeksNum / 2)).toFixed(2),
       monthly: (perPerson / (weeksNum / 4)).toFixed(2),
     })
+  }
+
+  const handleSave = async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    const userId = session.user.id
+
+    const { data: trip, error: tripError } = await supabase
+      .from('trips')
+      .insert({
+        name: summary.tripName,
+        start_date: summary.startDate,
+        end_date: summary.endDate,
+        weeks_until: summary.weeksUntil,
+        days_until: summary.daysUntilTrip,
+        trip_length_days: summary.tripLengthDays,
+        created_by: userId
+      })
+      .select()
+      .single()
+
+    if (tripError) {
+      alert('Error saving trip: ' + tripError.message)
+      return
+    }
+
+    // Add creator as admin
+    await supabase.from('trip_members').insert({
+      trip_id: trip.id,
+      user_id: userId,
+      is_admin: true
+    })
+
+    // Add costs
+    await supabase.from('trip_costs').insert(
+      costs.map(c => ({
+        trip_id: trip.id,
+        label: c.label,
+        amount: parseFloat(c.amount) || 0,
+        split_type: c.splitType
+      }))
+    )
+
+    // Look up members by email and add them
+    for (const email of summary.memberList) {
+      console.log('Looking up email:', email.trim())
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('email', email.trim())
+        .single()
+
+      console.log('Profile found:', profile)
+      console.log('Profile error:', profileError)
+
+      if (profile && profile.id !== userId) {
+        const { error: memberError } = await supabase.from('trip_members').insert({
+          trip_id: trip.id,
+          user_id: profile.id,
+          is_admin: false
+        })
+        console.log('Member insert error:', memberError)
+      }
+    }
+
+    navigate(`/trip/${trip.id}`)
   }
 
   return (
@@ -115,10 +186,10 @@ export default function NewTrip() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Member Emails (comma separated)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Invite Members (comma separated emails)</label>
               <input
                 type="text"
-                placeholder="alice@email.com, beth@email.com"
+                placeholder="friend1@email.com, friend2@email.com"
                 value={members}
                 onChange={e => setMembers(e.target.value)}
                 className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -199,7 +270,10 @@ export default function NewTrip() {
               <p className="text-gray-600">Fortnightly: <span className="font-bold">${summary.fortnightly}</span></p>
               <p className="text-gray-600">Monthly: <span className="font-bold">${summary.monthly}</span></p>
             </div>
-            <button className="w-full bg-green-500 text-white font-semibold py-3 rounded-xl hover:bg-green-600 transition mt-2">
+            <button
+              onClick={handleSave}
+              className="w-full bg-green-500 text-white font-semibold py-3 rounded-xl hover:bg-green-600 transition mt-2"
+            >
               Confirm & Save Trip
             </button>
           </div>
