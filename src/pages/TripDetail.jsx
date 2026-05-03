@@ -85,16 +85,15 @@ export default function TripDetail() {
 
   const getPaymentAmount = () => {
     const weeks = trip?.weeks_until || 1
-    if (schedule === 'Weekly') return (perPerson / weeks).toFixed(2)
-    if (schedule === 'Fortnightly') return (perPerson / (weeks / 2)).toFixed(2)
-    if (schedule === 'Monthly') return (perPerson / (weeks / 4)).toFixed(2)
+    const count = getPaymentCount()
+    return (perPerson / count).toFixed(2)
   }
 
   const getPaymentCount = () => {
     const weeks = trip?.weeks_until || 1
-    if (schedule === 'Weekly') return weeks
-    if (schedule === 'Fortnightly') return weeks / 2
-    if (schedule === 'Monthly') return Math.ceil(weeks / 4)
+    if (schedule === 'Weekly') return Math.max(1, weeks)
+    if (schedule === 'Fortnightly') return Math.max(1, Math.floor(weeks / 2))
+    if (schedule === 'Monthly') return Math.max(1, Math.floor(weeks / 4))
   }
 
   const addComment = async () => {
@@ -113,21 +112,21 @@ export default function TripDetail() {
   }
 
   const addPayment = async () => {
-  if (!newPayment || isNaN(newPayment)) return
-  const targetUserId = currentUser.isAdmin && selectedMember ? selectedMember : currentUser.id
-  setNewPayment('')
-  setSelectedMember('')
-  
-  await supabase
-    .from('payments')
-    .insert({ trip_id: id, user_id: targetUserId, amount: parseFloat(newPayment) })
+    if (!newPayment || isNaN(newPayment)) return
+    const targetUserId = currentUser.isAdmin && selectedMember ? selectedMember : currentUser.id
+    setNewPayment('')
+    setSelectedMember('')
 
-  const { data: refreshedPayments } = await supabase
-    .from('payments')
-    .select('*, profiles(name)')
-    .eq('trip_id', id)
-  setPayments(refreshedPayments || [])
-}
+    await supabase
+      .from('payments')
+      .insert({ trip_id: id, user_id: targetUserId, amount: parseFloat(newPayment) })
+
+    const { data: refreshedPayments } = await supabase
+      .from('payments')
+      .select('*, profiles(name)')
+      .eq('trip_id', id)
+    setPayments(refreshedPayments || [])
+  }
 
   if (loading) return (
     <div className="min-h-screen bg-gray-100 flex items-center justify-center">
