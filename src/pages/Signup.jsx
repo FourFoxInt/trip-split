@@ -8,6 +8,8 @@ export default function Signup() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -27,9 +29,7 @@ export default function Signup() {
     const { error } = await supabase.auth.signUp({
       email,
       password,
-      options: {
-        data: { name }
-      }
+      options: { data: { name } }
     })
 
     if (error) {
@@ -41,17 +41,20 @@ export default function Signup() {
     navigate('/dashboard')
   }
 
+  const inputClass = "w-full rounded-lg px-4 py-2 text-sm focus:outline-none"
+  const inputStyle = { border: '1px solid #dddbf1', color: '#383f51' }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: '#f5f4fb' }}>
+      <div className="bg-white rounded-2xl shadow-sm p-8 w-full max-w-md" style={{ border: '1px solid #dddbf1' }}>
 
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-blue-600">Trip Split</h1>
-          <p className="text-gray-500 mt-2">Create your account</p>
+          <h1 className="text-4xl font-bold mb-2" style={{ color: '#383f51' }}>Splitventure</h1>
+          <p className="text-sm" style={{ color: '#ab9f9d' }}>Create your account</p>
         </div>
 
         {error && (
-          <div className="bg-red-50 text-red-500 text-sm rounded-lg px-4 py-2 mb-4">
+          <div className="text-sm rounded-lg px-4 py-2 mb-4" style={{ backgroundColor: '#fdf0ee', color: '#c0624e' }}>
             {error}
           </div>
         )}
@@ -59,61 +62,99 @@ export default function Signup() {
         <div className="space-y-4">
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+            <label className="block text-sm font-medium mb-1" style={{ color: '#383f51' }}>Full Name</label>
             <input
               type="text"
               placeholder="Jane Smith"
               value={name}
               onChange={e => setName(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className={inputClass}
+              style={inputStyle}
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <label className="block text-sm font-medium mb-1" style={{ color: '#383f51' }}>Email</label>
             <input
               type="email"
               placeholder="you@example.com"
               value={email}
               onChange={e => setEmail(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className={inputClass}
+              style={inputStyle}
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-            <input
-              type="password"
-              placeholder="••••••••"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+            <label className="block text-sm font-medium mb-1" style={{ color: '#383f51' }}>Password</label>
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                placeholder="••••••••"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                className={inputClass}
+                style={inputStyle}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-2.5 text-sm transition hover:opacity-70"
+                style={{ color: '#ab9f9d' }}
+              >
+                {showPassword ? 'Hide' : 'Show'}
+              </button>
+            </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Confirm Password</label>
-            <input
-              type="password"
-              placeholder="••••••••"
-              value={confirmPassword}
-              onChange={e => setConfirmPassword(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+            <label className="block text-sm font-medium mb-1" style={{ color: '#383f51' }}>Confirm Password</label>
+            <div className="relative">
+              <input
+                type={showConfirmPassword ? 'text' : 'password'}
+                placeholder="••••••••"
+                value={confirmPassword}
+                onChange={e => setConfirmPassword(e.target.value)}
+                className={inputClass}
+                style={inputStyle}
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                className="absolute right-3 top-2.5 text-sm transition hover:opacity-70"
+                style={{ color: '#ab9f9d' }}
+              >
+                {showConfirmPassword ? 'Hide' : 'Show'}
+              </button>
+            </div>
           </div>
 
           <button
             onClick={handleSignup}
             disabled={loading}
-            className="w-full bg-blue-600 text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
+            className="w-full text-white font-semibold py-2.5 rounded-lg transition hover:opacity-90 disabled:opacity-50"
+            style={{ backgroundColor: '#3c4f76' }}
           >
             {loading ? 'Creating account...' : 'Create Account'}
           </button>
 
-          <p className="text-center text-sm text-gray-500">
+          <p className="text-center text-sm" style={{ color: '#ab9f9d' }}>
             Already have an account?{' '}
-            <span onClick={() => navigate('/')} className="text-blue-600 cursor-pointer hover:underline">
+            <span
+              onClick={() => navigate('/login')}
+              className="cursor-pointer hover:underline font-medium"
+              style={{ color: '#3c4f76' }}
+            >
               Log in
+            </span>
+          </p>
+
+          <p className="text-center text-sm" style={{ color: '#ab9f9d' }}>
+            <span
+              onClick={() => navigate('/')}
+              className="cursor-pointer hover:underline"
+            >
+              Back to home
             </span>
           </p>
 

@@ -31,16 +31,16 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: '#f5f4fb' }}>
+      <div className="bg-white rounded-2xl shadow-sm p-8 w-full max-w-md" style={{ border: '1px solid #dddbf1' }}>
 
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-blue-600">Trip Split</h1>
-          <p className="text-gray-500 mt-2">Plan trips. Split costs. No stress.</p>
+          <h1 className="text-4xl font-bold mb-2" style={{ color: '#383f51' }}>Splitventure</h1>
+          <p className="text-sm" style={{ color: '#ab9f9d' }}>The joint adventure budgeting app.</p>
         </div>
 
         {error && (
-          <div className="bg-red-50 text-red-500 text-sm rounded-lg px-4 py-2 mb-4">
+          <div className="text-sm rounded-lg px-4 py-2 mb-4" style={{ backgroundColor: '#fdf0ee', color: '#c0624e' }}>
             {error}
           </div>
         )}
@@ -48,30 +48,33 @@ export default function Login() {
         <div className="space-y-4">
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <label className="block text-sm font-medium mb-1" style={{ color: '#383f51' }}>Email</label>
             <input
               type="email"
               placeholder="you@example.com"
               value={email}
               onChange={e => setEmail(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full rounded-lg px-4 py-2 focus:outline-none focus:ring-2 text-sm"
+              style={{ border: '1px solid #dddbf1', color: '#383f51', focusRingColor: '#3c4f76' }}
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <label className="block text-sm font-medium mb-1" style={{ color: '#383f51' }}>Password</label>
             <div className="relative">
               <input
                 type={showPassword ? 'text' : 'password'}
                 placeholder="••••••••"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-lg px-4 py-2 focus:outline-none focus:ring-2 text-sm"
+                style={{ border: '1px solid #dddbf1', color: '#383f51' }}
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-2.5 text-sm text-gray-400 hover:text-gray-600"
+                className="absolute right-3 top-2.5 text-sm transition hover:opacity-70"
+                style={{ color: '#ab9f9d' }}
               >
                 {showPassword ? 'Hide' : 'Show'}
               </button>
@@ -81,15 +84,29 @@ export default function Login() {
           <button
             onClick={handleLogin}
             disabled={loading}
-            className="w-full bg-blue-600 text-white font-semibold py-2 rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
+            className="w-full text-white font-semibold py-2.5 rounded-lg transition hover:opacity-90 disabled:opacity-50"
+            style={{ backgroundColor: '#3c4f76' }}
           >
             {loading ? 'Logging in...' : 'Log In'}
           </button>
 
-          <p className="text-center text-sm text-gray-500">
+          <p className="text-center text-sm" style={{ color: '#ab9f9d' }}>
             Don't have an account?{' '}
-            <span onClick={() => navigate('/signup')} className="text-blue-600 cursor-pointer hover:underline">
+            <span
+              onClick={() => navigate('/signup')}
+              className="cursor-pointer hover:underline font-medium"
+              style={{ color: '#3c4f76' }}
+            >
               Sign up
+            </span>
+          </p>
+
+          <p className="text-center text-sm" style={{ color: '#ab9f9d' }}>
+            <span
+              onClick={() => navigate('/')}
+              className="cursor-pointer hover:underline"
+            >
+              Back to home
             </span>
           </p>
 

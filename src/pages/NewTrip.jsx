@@ -29,13 +29,13 @@ export default function NewTrip() {
   }
 
   const handleCreate = () => {
-    if (!tripName || !startDate || !endDate || !members) {
+    if (!tripName || !startDate || !endDate) {
       alert('Please fill in all fields.')
       return
     }
 
     const memberList = members.split(',').map(m => m.trim()).filter(m => m !== '')
-    const numMembers = memberList.length || 1
+    const numMembers = memberList.length + 1
 
     const today = new Date()
     const tripStart = new Date(startDate)
@@ -94,14 +94,12 @@ export default function NewTrip() {
       return
     }
 
-    // Add creator as admin
     await supabase.from('trip_members').insert({
       trip_id: trip.id,
       user_id: userId,
       is_admin: true
     })
 
-    // Add costs
     await supabase.from('trip_costs').insert(
       costs.map(c => ({
         trip_id: trip.id,
@@ -111,100 +109,106 @@ export default function NewTrip() {
       }))
     )
 
-    // Look up members by email and add them
     for (const email of summary.memberList) {
-      console.log('Looking up email:', email.trim())
-      const { data: profile, error: profileError } = await supabase
+      const { data: profile } = await supabase
         .from('profiles')
         .select('id')
         .eq('email', email.trim())
         .single()
 
-      console.log('Profile found:', profile)
-      console.log('Profile error:', profileError)
-
       if (profile && profile.id !== userId) {
-        const { error: memberError } = await supabase.from('trip_members').insert({
+        await supabase.from('trip_members').insert({
           trip_id: trip.id,
           user_id: profile.id,
           is_admin: false
         })
-        console.log('Member insert error:', memberError)
       }
     }
 
     navigate(`/trip/${trip.id}`)
   }
 
-  return (
-    <div className="min-h-screen bg-gray-100">
+  const inputClass = "w-full rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-offset-1"
+  const inputStyle = { border: '1px solid #dddbf1', color: '#383f51' }
+  const labelStyle = { color: '#383f51' }
 
-      <nav className="bg-white shadow px-6 py-4 flex justify-between items-center">
-        <button onClick={() => navigate('/dashboard')} className="text-blue-600 hover:underline text-sm">
+  return (
+    <div className="min-h-screen" style={{ backgroundColor: '#f5f4fb' }}>
+
+      <nav className="bg-white border-b px-6 py-4 flex justify-between items-center" style={{ borderColor: '#dddbf1' }}>
+        <button
+          onClick={() => navigate('/dashboard')}
+          className="text-sm font-medium transition hover:opacity-70"
+          style={{ color: '#3c4f76' }}
+        >
           Back to Dashboard
         </button>
-        <h1 className="text-2xl font-bold text-blue-600">Trip Split</h1>
+        <h1 className="text-2xl font-bold" style={{ color: '#383f51' }}>Splitventure</h1>
       </nav>
 
       <div className="max-w-2xl mx-auto p-6 space-y-6">
 
-        <div className="bg-white rounded-2xl shadow p-6">
-          <h2 className="text-2xl font-bold text-gray-800 mb-6">Create New Trip</h2>
+        <div className="bg-white rounded-2xl shadow-sm p-6" style={{ border: '1px solid #dddbf1' }}>
+          <h2 className="text-2xl font-bold mb-6" style={{ color: '#383f51' }}>Create New Trip</h2>
 
           <div className="space-y-4">
-
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Trip Name</label>
+              <label className="block text-sm font-medium mb-1" style={labelStyle}>Trip Name</label>
               <input
                 type="text"
-                placeholder="e.g. Taylor Swift Concert"
+                placeholder="e.g. Queenstown Weekend"
                 value={tripName}
                 onChange={e => setTripName(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className={inputClass}
+                style={inputStyle}
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Trip Start Date</label>
+              <label className="block text-sm font-medium mb-1" style={labelStyle}>Trip Start Date</label>
               <input
                 type="date"
                 value={startDate}
                 onChange={e => setStartDate(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className={inputClass}
+                style={inputStyle}
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Trip End Date</label>
+              <label className="block text-sm font-medium mb-1" style={labelStyle}>Trip End Date</label>
               <input
                 type="date"
                 value={endDate}
                 min={startDate}
                 onChange={e => setEndDate(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className={inputClass}
+                style={inputStyle}
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Invite Members (comma separated emails)</label>
+              <label className="block text-sm font-medium mb-1" style={labelStyle}>Invite Members (comma separated emails)</label>
               <input
                 type="text"
                 placeholder="friend1@email.com, friend2@email.com"
                 value={members}
                 onChange={e => setMembers(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className={inputClass}
+                style={inputStyle}
               />
+              <p className="text-xs mt-1" style={{ color: '#ab9f9d' }}>You are automatically added as the trip organiser.</p>
             </div>
-
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl shadow p-6">
+        <div className="bg-white rounded-2xl shadow-sm p-6" style={{ border: '1px solid #dddbf1' }}>
           <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-semibold text-gray-700">Costs</h3>
+            <h3 className="text-lg font-semibold" style={{ color: '#383f51' }}>Costs</h3>
             <button
               onClick={addCost}
-              className="text-sm text-blue-600 hover:underline font-medium"
+              className="text-sm font-medium transition hover:opacity-70"
+              style={{ color: '#3c4f76' }}
             >
               + Add Cost
             </button>
@@ -215,32 +219,35 @@ export default function NewTrip() {
               <div key={i} className="grid grid-cols-12 gap-2 items-center">
                 <input
                   type="text"
-                  placeholder="Label (e.g. Petrol)"
+                  placeholder="Label"
                   value={cost.label}
                   onChange={e => updateCost(i, 'label', e.target.value)}
-                  className="col-span-4 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="col-span-4 rounded-lg px-3 py-2 text-sm focus:outline-none"
+                  style={{ border: '1px solid #dddbf1', color: '#383f51' }}
                 />
                 <input
                   type="number"
                   placeholder="Amount $"
                   value={cost.amount}
                   onChange={e => updateCost(i, 'amount', e.target.value)}
-                  className="col-span-3 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="col-span-3 rounded-lg px-3 py-2 text-sm focus:outline-none"
+                  style={{ border: '1px solid #dddbf1', color: '#383f51' }}
                 />
                 <select
                   value={cost.splitType}
                   onChange={e => updateCost(i, 'splitType', e.target.value)}
-                  className="col-span-4 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="col-span-4 rounded-lg px-3 py-2 text-sm focus:outline-none"
+                  style={{ border: '1px solid #dddbf1', color: '#383f51' }}
                 >
                   <option value="per person">Per Person</option>
                   <option value="group">Group Split</option>
                   <option value="per person per day">Per Person/Day</option>
                   <option value="group per day">Group/Day</option>
                 </select>
-
                 <button
                   onClick={() => removeCost(i)}
-                  className="col-span-1 text-red-400 hover:text-red-600 text-lg font-bold text-center"
+                  className="col-span-1 text-lg font-bold text-center transition hover:opacity-70"
+                  style={{ color: '#ab9f9d' }}
                 >
                   ×
                 </button>
@@ -251,28 +258,37 @@ export default function NewTrip() {
 
         <button
           onClick={handleCreate}
-          className="w-full bg-blue-600 text-white font-semibold py-3 rounded-xl hover:bg-blue-700 transition"
+          className="w-full text-white font-semibold py-3 rounded-xl transition hover:opacity-90"
+          style={{ backgroundColor: '#3c4f76' }}
         >
           Preview Trip
         </button>
 
         {summary && (
-          <div className="bg-white rounded-2xl shadow p-6 space-y-3">
-            <h3 className="text-lg font-semibold text-gray-700">Trip Summary</h3>
-            <p className="text-gray-600">Trip: <span className="font-bold">{summary.tripName}</span></p>
-            <p className="text-gray-600">Dates: <span className="font-bold">{summary.startDate} → {summary.endDate}</span></p>
-            <p className="text-gray-600">Trip Length: <span className="font-bold">{summary.tripLengthDays} days</span></p>
-            <p className="text-gray-600">Weeks until trip: <span className="font-bold">{summary.weeksUntil} ({summary.daysUntilTrip} days)</span></p>            <p className="text-gray-600">Members: <span className="font-bold">{summary.memberList.join(', ')}</span></p>
-            <p className="text-gray-600">Total Cost: <span className="font-bold text-blue-600">${summary.totalCost.toFixed(2)}</span></p>
-            <p className="text-gray-600">Per Person: <span className="font-bold text-blue-600">${summary.perPerson.toFixed(2)}</span></p>
-            <div className="border-t pt-3 space-y-1">
-              <p className="text-gray-600">Weekly: <span className="font-bold">${summary.weekly}</span></p>
-              <p className="text-gray-600">Fortnightly: <span className="font-bold">${summary.fortnightly}</span></p>
-              <p className="text-gray-600">Monthly: <span className="font-bold">${summary.monthly}</span></p>
+          <div className="bg-white rounded-2xl shadow-sm p-6 space-y-3" style={{ border: '1px solid #dddbf1' }}>
+            <h3 className="text-lg font-semibold" style={{ color: '#383f51' }}>Trip Summary</h3>
+
+            <div className="space-y-2 text-sm">
+              <p style={{ color: '#ab9f9d' }}>Trip: <span className="font-semibold" style={{ color: '#383f51' }}>{summary.tripName}</span></p>
+              <p style={{ color: '#ab9f9d' }}>Dates: <span className="font-semibold" style={{ color: '#383f51' }}>{summary.startDate} → {summary.endDate}</span></p>
+              <p style={{ color: '#ab9f9d' }}>Trip Length: <span className="font-semibold" style={{ color: '#383f51' }}>{summary.tripLengthDays} days</span></p>
+              <p style={{ color: '#ab9f9d' }}>Weeks until trip: <span className="font-semibold" style={{ color: '#383f51' }}>{summary.weeksUntil} ({summary.daysUntilTrip} days)</span></p>
+              <p style={{ color: '#ab9f9d' }}>Invited members: <span className="font-semibold" style={{ color: '#383f51' }}>{summary.memberList.length > 0 ? summary.memberList.join(', ') : 'None'}</span></p>
+              <p style={{ color: '#ab9f9d' }}>Total Cost: <span className="font-semibold" style={{ color: '#3c4f76' }}>${summary.totalCost.toFixed(2)}</span></p>
+              <p style={{ color: '#ab9f9d' }}>Per Person: <span className="font-semibold" style={{ color: '#3c4f76' }}>${summary.perPerson.toFixed(2)}</span></p>
             </div>
+
+            <div className="rounded-xl p-4 space-y-2" style={{ backgroundColor: '#f5f4fb' }}>
+              <p className="text-sm font-medium" style={{ color: '#383f51' }}>Payment options</p>
+              <p className="text-sm" style={{ color: '#ab9f9d' }}>Weekly: <span className="font-semibold" style={{ color: '#383f51' }}>${summary.weekly}</span></p>
+              <p className="text-sm" style={{ color: '#ab9f9d' }}>Fortnightly: <span className="font-semibold" style={{ color: '#383f51' }}>${summary.fortnightly}</span></p>
+              <p className="text-sm" style={{ color: '#ab9f9d' }}>Monthly: <span className="font-semibold" style={{ color: '#383f51' }}>${summary.monthly}</span></p>
+            </div>
+
             <button
               onClick={handleSave}
-              className="w-full bg-green-500 text-white font-semibold py-3 rounded-xl hover:bg-green-600 transition mt-2"
+              className="w-full text-white font-semibold py-3 rounded-xl transition hover:opacity-90 mt-2"
+              style={{ backgroundColor: '#383f51' }}
             >
               Confirm & Save Trip
             </button>
