@@ -29,6 +29,15 @@ export default function TripDetail() {
   const [replyingTo, setReplyingTo] = useState(null)
   const [replyText, setReplyText] = useState('')
 
+  const [activeFeedTab, setActiveFeedTab] = useState('feed')
+  const [votes, setVotes] = useState([])
+  const [voteOptions, setVoteOptions] = useState([])
+  const [voteResponses, setVoteResponses] = useState([])
+  const [showNewVote, setShowNewVote] = useState(false)
+  const [newVoteQuestion, setNewVoteQuestion] = useState('')
+  const [newVoteEndDate, setNewVoteEndDate] = useState('')
+  const [newVoteOptions, setNewVoteOptions] = useState(['', ''])
+
   useEffect(() => {
     const loadData = async () => {
       const { data: { session } } = await supabase.auth.getSession()
@@ -57,10 +66,9 @@ export default function TripDetail() {
         .select('*, profiles(name)')
         .in('post_id', feedData?.map(p => p.id) || [])
       setReactions(reactionsData || [])
-
+      await loadVotes()
       setLoading(false)
     }
-
     loadData()
   }, [id])
 
@@ -108,6 +116,89 @@ export default function TripDetail() {
     await supabase.from('feed_posts').insert({ trip_id: id, user_id: currentUser.id, message: newComment })
     const { data: refreshedFeed } = await supabase.from('feed_posts').select('*, profiles(name)').eq('trip_id', id).order('created_at', { ascending: true })
     setFeed(refreshedFeed || [])
+  }
+
+  const addVoteOption = () => setNewVoteOptions([...newVoteOptions, ''])
+
+  const updateVoteOption = (index, value) => {
+    const updated = newVoteOptions.map((o, i) => i === index ? value : o)
+    setNewVoteOptions(updated)
+  }
+
+  const removeVoteOption = (index) => {
+    setNewVoteOptions(newVoteOptions.filter((_, i) => i !== index))
+  }
+
+  const submitVote = async () => {
+    if (!newVoteQuestion.trim()) return
+    const validOptions = newVoteOptions.filter(o => o.trim() !== '')
+    if (validOptions.length < 2) {
+      alert('Please add at least 2 options.')
+      return
+    }
+
+    const { data: vote } = await supabase
+      .from('votes')
+      .insert({
+        trip_id: id,
+        created_by: currentUser.id,
+        question: newVoteQuestion,
+        end_date: newVoteEndDate || null
+      })
+      .select()
+      .single()
+
+    await supabase.from('vote_options').insert(
+      validOptions.map(label => ({ vote_id: vote.id, label }))
+    )
+
+    setNewVoteQuestion('')
+    setNewVoteEndDate('')
+    setNewVoteOptions(['', ''])
+    setShowNewVote(false)
+    loadVotes()
+  }
+
+  const castVote = async (voteId, optionId) => {
+    const existing = voteResponses.find(r => r.vote_id === voteId && r.user_id === currentUser.id)
+
+    if (existing) {
+      if (existing.option_id === optionId) return
+      await supabase.from('vote_responses').update({ option_id: optionId }).eq('id', existing.id)
+    } else {
+      await supabase.from('vote_responses').insert({
+        vote_id: voteId,
+        option_id: optionId,
+        user_id: currentUser.id
+      })
+    }
+    loadVotes()
+  }
+
+  const toggleVote = async (voteId, currentState) => {
+    await supabase.from('votes').update({ closed: !currentState }).eq('id', voteId)
+    loadVotes()
+  }
+
+  const loadVotes = async () => {
+    const { data: votesData } = await supabase
+      .from('votes')
+      .select('*')
+      .eq('trip_id', id)
+      .order('created_at', { ascending: false })
+    setVotes(votesData || [])
+
+    const { data: optionsData } = await supabase
+      .from('vote_options')
+      .select('*')
+      .in('vote_id', votesData?.map(v => v.id) || [])
+    setVoteOptions(optionsData || [])
+
+    const { data: responsesData } = await supabase
+      .from('vote_responses')
+      .select('*')
+      .in('vote_id', votesData?.map(v => v.id) || [])
+    setVoteResponses(responsesData || [])
   }
 
   const addPayment = async () => {
@@ -390,6 +481,7 @@ export default function TripDetail() {
         </div>
 
         {/* Trip Feed */}
+        {/* Trip Feed */}
         <div className={sectionCard} style={sectionBorder}>
           <button onClick={() => setShowFeed(!showFeed)} className={toggleBtn}>
             <h3 className="text-lg font-semibold" style={{ color: '#383f51' }}>Trip Feed</h3>
@@ -397,136 +489,342 @@ export default function TripDetail() {
           </button>
           {showFeed && (
             <div>
-              <div className="space-y-4 mb-6">
-                {feed.length === 0 ? (
-                  <p className="text-sm text-center" style={{ color: '#ab9f9d' }}>No posts yet. Say something!</p>
-                ) : (
-                  feed
-                    .filter(post => !post.parent_id)
-                    .map(post => {
-                      const postReactions = reactions.filter(r => r.post_id === post.id)
-                      const hasReacted = postReactions.some(r => r.user_id === currentUser.id)
-                      const replies = feed.filter(r => r.parent_id === post.id)
 
-                      return (
-                        <div key={post.id}>
-                          {/* Parent Post */}
-                          <div className="flex gap-3">
-                            <div
-                              className="w-9 h-9 rounded-full font-bold flex items-center justify-center text-sm flex-shrink-0"
-                              style={{ backgroundColor: '#dddbf1', color: '#3c4f76' }}
-                            >
-                              {post.profiles?.name?.[0]}
-                            </div>
-                            <div className="rounded-xl px-4 py-3 flex-1" style={{ backgroundColor: '#f5f4fb' }}>
-                              <div className="flex justify-between items-center mb-1">
-                                <p className="text-sm font-semibold" style={{ color: '#383f51' }}>{post.profiles?.name}</p>
-                                <p className="text-xs" style={{ color: '#ab9f9d' }}>{new Date(post.created_at).toLocaleString()}</p>
-                              </div>
-                              <p className="text-sm mb-2" style={{ color: '#383f51' }}>{post.message}</p>
-                              <div className="flex items-center gap-3">
-                                <div className="relative group inline-block">
-                                  <button
-                                    onClick={() => toggleReaction(post.id)}
-                                    className="flex items-center gap-1 transition hover:opacity-70"
-                                    style={{ color: hasReacted ? '#c0624e' : '#ab9f9d' }}
-                                  >
-                                    <span className="text-xl">{hasReacted ? '♥' : '♡'}</span>
-                                    {postReactions.length > 0 && <span className="text-xs">{postReactions.length}</span>}
-                                  </button>
-                                  {postReactions.length > 0 && (
-                                    <div
-                                      className="absolute bottom-full left-0 mb-2 px-3 py-2 rounded-lg text-xs opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10"
-                                      style={{ backgroundColor: '#383f51', color: '#dddbf1' }}
+              {/* Tabs */}
+              <div className="flex gap-2 mb-6">
+                <button
+                  onClick={() => setActiveFeedTab('feed')}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold transition"
+                  style={activeFeedTab === 'feed'
+                    ? { backgroundColor: '#3c4f76', color: 'white' }
+                    : { backgroundColor: '#f5f4fb', color: '#ab9f9d' }
+                  }
+                >
+                  Feed
+                </button>
+                <button
+                  onClick={() => setActiveFeedTab('votes')}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold transition relative"
+                  style={activeFeedTab === 'votes'
+                    ? { backgroundColor: '#3c4f76', color: 'white' }
+                    : { backgroundColor: '#f5f4fb', color: '#ab9f9d' }
+                  }
+                >
+                  Polls
+                  {votes.some(v => !v.closed && !voteResponses.find(r => r.vote_id === v.id && r.user_id === currentUser.id)) && (
+                    <span
+                      className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full"
+                      style={{ backgroundColor: '#c0624e' }}
+                    />
+                  )}
+                </button>
+              </div>
+
+              {/* Feed Tab */}
+              {activeFeedTab === 'feed' && (
+                <div>
+                  <div className="space-y-4 mb-6">
+                    {feed.length === 0 ? (
+                      <p className="text-sm text-center" style={{ color: '#ab9f9d' }}>No posts yet. Say something!</p>
+                    ) : (
+                      feed
+                        .filter(post => !post.parent_id)
+                        .map(post => {
+                          const postReactions = reactions.filter(r => r.post_id === post.id)
+                          const hasReacted = postReactions.some(r => r.user_id === currentUser.id)
+                          const replies = feed.filter(r => r.parent_id === post.id)
+
+                          return (
+                            <div key={post.id}>
+                              <div className="flex gap-3">
+                                <div
+                                  className="w-9 h-9 rounded-full font-bold flex items-center justify-center text-sm flex-shrink-0"
+                                  style={{ backgroundColor: '#dddbf1', color: '#3c4f76' }}
+                                >
+                                  {post.profiles?.name?.[0]}
+                                </div>
+                                <div className="rounded-xl px-4 py-3 flex-1" style={{ backgroundColor: '#f5f4fb' }}>
+                                  <div className="flex justify-between items-center mb-1">
+                                    <p className="text-sm font-semibold" style={{ color: '#383f51' }}>{post.profiles?.name}</p>
+                                    <p className="text-xs" style={{ color: '#ab9f9d' }}>{new Date(post.created_at).toLocaleString()}</p>
+                                  </div>
+                                  <p className="text-sm mb-2" style={{ color: '#383f51' }}>{post.message}</p>
+                                  <div className="flex items-center gap-3">
+                                    <div className="relative group inline-block">
+                                      <button
+                                        onClick={() => toggleReaction(post.id)}
+                                        className="flex items-center gap-1 transition hover:opacity-70"
+                                        style={{ color: hasReacted ? '#c0624e' : '#ab9f9d' }}
+                                      >
+                                        <span className="text-xl">{hasReacted ? '♥' : '♡'}</span>
+                                        {postReactions.length > 0 && <span className="text-xs">{postReactions.length}</span>}
+                                      </button>
+                                      {postReactions.length > 0 && (
+                                        <div
+                                          className="absolute bottom-full left-0 mb-2 px-3 py-2 rounded-lg text-xs opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10"
+                                          style={{ backgroundColor: '#383f51', color: '#dddbf1' }}
+                                        >
+                                          <div className="flex flex-col gap-1">
+                                            {postReactions.map((r, i) => (
+                                              <span key={i} style={{ color: '#dddbf1' }}>{r.profiles?.name}</span>
+                                            ))}
+                                          </div>
+                                          <div className="absolute top-full left-3 border-4 border-transparent" style={{ borderTopColor: '#383f51' }} />
+                                        </div>
+                                      )}
+                                    </div>
+                                    <button
+                                      onClick={() => setReplyingTo(replyingTo === post.id ? null : post.id)}
+                                      className="text-xs transition hover:opacity-70"
+                                      style={{ color: '#ab9f9d' }}
                                     >
-                                      <div className="flex flex-col gap-1">
-                                        {postReactions.map((r, i) => (
-                                          <span key={i} style={{ color: '#dddbf1' }}>{r.profiles?.name}</span>
-                                        ))}
-                                      </div>
-                                      <div className="absolute top-full left-3 border-4 border-transparent" style={{ borderTopColor: '#383f51' }} />
+                                      {replyingTo === post.id ? 'Cancel' : 'Reply'}
+                                    </button>
+                                  </div>
+                                  {replyingTo === post.id && (
+                                    <div className="flex gap-2 mt-3">
+                                      <input
+                                        type="text"
+                                        placeholder="Write a reply..."
+                                        value={replyText}
+                                        onChange={e => setReplyText(e.target.value)}
+                                        onKeyDown={e => e.key === 'Enter' && addReply(post.id)}
+                                        className="flex-1 rounded-lg px-3 py-1.5 text-sm focus:outline-none"
+                                        style={{ border: '1px solid #dddbf1', color: '#383f51' }}
+                                        autoFocus
+                                      />
+                                      <button
+                                        onClick={() => addReply(post.id)}
+                                        className="text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition hover:opacity-90"
+                                        style={{ backgroundColor: '#3c4f76' }}
+                                      >
+                                        Send
+                                      </button>
                                     </div>
                                   )}
                                 </div>
+                              </div>
+                              {replies.length > 0 && (
+                                <div className="ml-12 mt-2 space-y-2">
+                                  {replies.map(reply => (
+                                    <div key={reply.id} className="flex gap-3">
+                                      <div
+                                        className="w-7 h-7 rounded-full font-bold flex items-center justify-center text-xs flex-shrink-0"
+                                        style={{ backgroundColor: '#dddbf1', color: '#3c4f76' }}
+                                      >
+                                        {reply.profiles?.name?.[0]}
+                                      </div>
+                                      <div className="rounded-xl px-3 py-2 flex-1" style={{ backgroundColor: '#f5f4fb', border: '1px solid #dddbf1' }}>
+                                        <div className="flex justify-between items-center mb-1">
+                                          <p className="text-xs font-semibold" style={{ color: '#383f51' }}>{reply.profiles?.name}</p>
+                                          <p className="text-xs" style={{ color: '#ab9f9d' }}>{new Date(reply.created_at).toLocaleString()}</p>
+                                        </div>
+                                        <p className="text-sm" style={{ color: '#383f51' }}>{reply.message}</p>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="Leave a comment..."
+                      value={newComment}
+                      onChange={e => setNewComment(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && addComment()}
+                      className="flex-1 rounded-lg px-4 py-2 text-sm focus:outline-none"
+                      style={{ border: '1px solid #dddbf1', color: '#383f51' }}
+                    />
+                    <button
+                      onClick={addComment}
+                      className="text-white px-4 py-2 rounded-lg text-sm font-semibold transition hover:opacity-90"
+                      style={{ backgroundColor: '#3c4f76' }}
+                    >
+                      Post
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Votes Tab */}
+              {activeFeedTab === 'votes' && (
+                <div className="space-y-4">
+
+                  {currentUser.isAdmin && (
+                    <div>
+                      {!showNewVote ? (
+                        <button
+                          onClick={() => setShowNewVote(true)}
+                          className="text-sm font-medium transition hover:opacity-70"
+                          style={{ color: '#3c4f76' }}
+                        >
+                          + Create Poll
+                        </button>
+                      ) : (
+                        <div className="rounded-xl p-4 space-y-3" style={{ backgroundColor: '#f5f4fb', border: '1px solid #dddbf1' }}>
+                          <p className="text-sm font-semibold" style={{ color: '#383f51' }}>New Poll</p>
+
+                          <input
+                            type="text"
+                            placeholder="Question e.g. Which hotel should we book?"
+                            value={newVoteQuestion}
+                            onChange={e => setNewVoteQuestion(e.target.value)}
+                            className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
+                            style={{ border: '1px solid #dddbf1', color: '#383f51' }}
+                          />
+
+                          <div>
+                            <label className="block text-xs mb-1" style={{ color: '#ab9f9d' }}>End Date (optional, cannot be after trip start)</label>
+                            <input
+                              type="date"
+                              value={newVoteEndDate}
+                              max={trip?.start_date}
+                              onChange={e => setNewVoteEndDate(e.target.value)}
+                              className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
+                              style={{ border: '1px solid #dddbf1', color: '#383f51' }}
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            {newVoteOptions.map((option, i) => (
+                              <div key={i} className="flex gap-2 items-center">
+                                <input
+                                  type="text"
+                                  placeholder={`Option ${i + 1}`}
+                                  value={option}
+                                  onChange={e => updateVoteOption(i, e.target.value)}
+                                  className="flex-1 rounded-lg px-3 py-2 text-sm focus:outline-none"
+                                  style={{ border: '1px solid #dddbf1', color: '#383f51' }}
+                                />
+                                {newVoteOptions.length > 2 && (
+                                  <button
+                                    onClick={() => removeVoteOption(i)}
+                                    className="text-lg font-bold transition hover:opacity-70"
+                                    style={{ color: '#ab9f9d' }}
+                                  >
+                                    ×
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                            <button
+                              onClick={addVoteOption}
+                              className="text-xs transition hover:opacity-70"
+                              style={{ color: '#3c4f76' }}
+                            >
+                              + Add Option
+                            </button>
+                          </div>
+
+                          <div className="flex gap-2 pt-2">
+                            <button
+                              onClick={submitVote}
+                              className="text-white px-4 py-2 rounded-lg text-sm font-semibold transition hover:opacity-90"
+                              style={{ backgroundColor: '#3c4f76' }}
+                            >
+                              Post Vote
+                            </button>
+                            <button
+                              onClick={() => setShowNewVote(false)}
+                              className="px-4 py-2 rounded-lg text-sm transition hover:opacity-70"
+                              style={{ color: '#ab9f9d' }}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {votes.length === 0 ? (
+                    <p className="text-sm text-center" style={{ color: '#ab9f9d' }}>No polls yet.</p>
+                  ) : (
+                    votes.map(vote => {
+                      const options = voteOptions.filter(o => o.vote_id === vote.id)
+                      const responses = voteResponses.filter(r => r.vote_id === vote.id)
+                      const userResponse = responses.find(r => r.user_id === currentUser.id)
+                      const totalVotes = responses.length
+
+                      return (
+                        <div key={vote.id} className="rounded-xl p-4" style={{ backgroundColor: '#f5f4fb', border: '1px solid #dddbf1' }}>
+                          <div className="flex justify-between items-start mb-3">
+                            <div>
+                              <p className="text-sm font-semibold" style={{ color: '#383f51' }}>{vote.question}</p>
+                              {vote.end_date && (
+                                <p className="text-xs mt-0.5" style={{ color: '#ab9f9d' }}>Closes {vote.end_date}</p>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span
+                                className="text-xs px-2 py-1 rounded-full"
+                                style={vote.closed
+                                  ? { backgroundColor: '#f5f0ec', color: '#ab9f9d' }
+                                  : { backgroundColor: '#dddbf1', color: '#3c4f76' }
+                                }
+                              >
+                                {vote.closed ? 'Closed' : 'Open'}
+                              </span>
+                              {currentUser.isAdmin && (
                                 <button
-                                  onClick={() => setReplyingTo(replyingTo === post.id ? null : post.id)}
+                                  onClick={() => toggleVote(vote.id, vote.closed)}
                                   className="text-xs transition hover:opacity-70"
                                   style={{ color: '#ab9f9d' }}
                                 >
-                                  {replyingTo === post.id ? 'Cancel' : 'Reply'}
+                                  {vote.closed ? 'Reopen' : 'Close'}
                                 </button>
-                              </div>
-
-                              {/* Reply Input */}
-                              {replyingTo === post.id && (
-                                <div className="flex gap-2 mt-3">
-                                  <input
-                                    type="text"
-                                    placeholder="Write a reply..."
-                                    value={replyText}
-                                    onChange={e => setReplyText(e.target.value)}
-                                    onKeyDown={e => e.key === 'Enter' && addReply(post.id)}
-                                    className="flex-1 rounded-lg px-3 py-1.5 text-sm focus:outline-none"
-                                    style={{ border: '1px solid #dddbf1', color: '#383f51' }}
-                                    autoFocus
-                                  />
-                                  <button
-                                    onClick={() => addReply(post.id)}
-                                    className="text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition hover:opacity-90"
-                                    style={{ backgroundColor: '#3c4f76' }}
-                                  >
-                                    Send
-                                  </button>
-                                </div>
                               )}
                             </div>
                           </div>
 
-                          {/* Replies */}
-                          {replies.length > 0 && (
-                            <div className="ml-12 mt-2 space-y-2">
-                              {replies.map(reply => (
-                                <div key={reply.id} className="flex gap-3">
-                                  <div
-                                    className="w-7 h-7 rounded-full font-bold flex items-center justify-center text-xs flex-shrink-0"
-                                    style={{ backgroundColor: '#dddbf1', color: '#3c4f76' }}
+                          <div className="space-y-2">
+                            {options.map(option => {
+                              const optionVotes = responses.filter(r => r.option_id === option.id).length
+                              const percent = totalVotes > 0 ? Math.round((optionVotes / totalVotes) * 100) : 0
+                              const isSelected = userResponse?.option_id === option.id
+
+                              return (
+                                <div key={option.id}>
+                                  <button
+                                    onClick={() => !vote.closed && castVote(vote.id, option.id)}
+                                    className="w-full text-left rounded-lg px-3 py-2 text-sm transition"
+                                    style={{
+                                      border: isSelected ? '2px solid #3c4f76' : '1px solid #dddbf1',
+                                      backgroundColor: isSelected ? '#dddbf1' : 'white',
+                                      color: '#383f51',
+                                      cursor: vote.closed ? 'default' : 'pointer'
+                                    }}
                                   >
-                                    {reply.profiles?.name?.[0]}
-                                  </div>
-                                  <div className="rounded-xl px-3 py-2 flex-1" style={{ backgroundColor: '#f5f4fb', border: '1px solid #dddbf1' }}>
-                                    <div className="flex justify-between items-center mb-1">
-                                      <p className="text-xs font-semibold" style={{ color: '#383f51' }}>{reply.profiles?.name}</p>
-                                      <p className="text-xs" style={{ color: '#ab9f9d' }}>{new Date(reply.created_at).toLocaleString()}</p>
+                                    {option.label}
+                                  </button>
+                                  {(userResponse || vote.closed) && (
+                                    <div className="mt-1 px-1">
+                                      <div className="w-full rounded-full h-1.5" style={{ backgroundColor: '#dddbf1' }}>
+                                        <div
+                                          className="h-1.5 rounded-full transition-all"
+                                          style={{ width: `${percent}%`, backgroundColor: '#3c4f76' }}
+                                        />
+                                      </div>
+                                      <p className="text-xs mt-0.5" style={{ color: '#ab9f9d' }}>{percent}% · {optionVotes} vote{optionVotes !== 1 ? 's' : ''}</p>
                                     </div>
-                                    <p className="text-sm" style={{ color: '#383f51' }}>{reply.message}</p>
-                                  </div>
+                                  )}
                                 </div>
-                              ))}
-                            </div>
-                          )}
+                              )
+                            })}
+                          </div>
+                          <p className="text-xs mt-3" style={{ color: '#ab9f9d' }}>{totalVotes} vote{totalVotes !== 1 ? 's' : ''} total</p>
                         </div>
                       )
                     })
-                )}
-              </div>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="Leave a comment..."
-                  value={newComment}
-                  onChange={e => setNewComment(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && addComment()}
-                  className="flex-1 rounded-lg px-4 py-2 text-sm focus:outline-none"
-                  style={{ border: '1px solid #dddbf1', color: '#383f51' }}
-                />
-                <button
-                  onClick={addComment}
-                  className="text-white px-4 py-2 rounded-lg text-sm font-semibold transition hover:opacity-90"
-                  style={{ backgroundColor: '#3c4f76' }}
-                >
-                  Post
-                </button>
-              </div>
+                  )}
+                </div>
+              )}
+
             </div>
           )}
         </div>
