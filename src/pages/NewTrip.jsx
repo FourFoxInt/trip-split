@@ -9,12 +9,12 @@ export default function NewTrip() {
   const [endDate, setEndDate] = useState('')
   const [members, setMembers] = useState('')
   const [costs, setCosts] = useState([
-    { label: '', amount: '', splitType: 'per person' }
+    { label: '', amount: '', splitType: 'per person', dueDate: '' }
   ])
   const [summary, setSummary] = useState(null)
 
   const addCost = () => {
-    setCosts([...costs, { label: '', amount: '', splitType: 'per person' }])
+    setCosts([...costs, { label: '', amount: '', splitType: 'per person', dueDate: startDate }])
   }
 
   const removeCost = (index) => {
@@ -105,7 +105,8 @@ export default function NewTrip() {
         trip_id: trip.id,
         label: c.label,
         amount: parseFloat(c.amount) || 0,
-        split_type: c.splitType
+        split_type: c.splitType,
+        due_date: c.dueDate || null
       }))
     )
 
@@ -169,7 +170,10 @@ export default function NewTrip() {
               <input
                 type="date"
                 value={startDate}
-                onChange={e => setStartDate(e.target.value)}
+                onChange={e => {
+                  setStartDate(e.target.value)
+                  setCosts(costs.map(c => ({ ...c, dueDate: c.dueDate === '' || c.dueDate === startDate ? e.target.value : c.dueDate })))
+                }}
                 className={inputClass}
                 style={inputStyle}
               />
@@ -222,7 +226,7 @@ export default function NewTrip() {
                   placeholder="Label"
                   value={cost.label}
                   onChange={e => updateCost(i, 'label', e.target.value)}
-                  className="col-span-4 rounded-lg px-3 py-2 text-sm focus:outline-none"
+                  className="col-span-3 rounded-lg px-3 py-2 text-sm focus:outline-none"
                   style={{ border: '1px solid #dddbf1', color: '#383f51' }}
                 />
                 <input
@@ -230,13 +234,13 @@ export default function NewTrip() {
                   placeholder="Amount $"
                   value={cost.amount}
                   onChange={e => updateCost(i, 'amount', e.target.value)}
-                  className="col-span-3 rounded-lg px-3 py-2 text-sm focus:outline-none"
+                  className="col-span-2 rounded-lg px-3 py-2 text-sm focus:outline-none"
                   style={{ border: '1px solid #dddbf1', color: '#383f51' }}
                 />
                 <select
                   value={cost.splitType}
                   onChange={e => updateCost(i, 'splitType', e.target.value)}
-                  className="col-span-4 rounded-lg px-3 py-2 text-sm focus:outline-none"
+                  className="col-span-3 rounded-lg px-3 py-2 text-sm focus:outline-none"
                   style={{ border: '1px solid #dddbf1', color: '#383f51' }}
                 >
                   <option value="per person">Per Person</option>
@@ -244,6 +248,14 @@ export default function NewTrip() {
                   <option value="per person per day">Per Person/Day</option>
                   <option value="group per day">Group/Day</option>
                 </select>
+                <input
+                  type="date"
+                  value={cost.dueDate}
+                  max={endDate}
+                  onChange={e => updateCost(i, 'dueDate', e.target.value)}
+                  className="col-span-3 rounded-lg px-3 py-2 text-sm focus:outline-none"
+                  style={{ border: '1px solid #dddbf1', color: '#383f51' }}
+                />
                 <button
                   onClick={() => removeCost(i)}
                   className="col-span-1 text-lg font-bold text-center transition hover:opacity-70"

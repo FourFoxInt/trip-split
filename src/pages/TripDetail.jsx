@@ -20,7 +20,7 @@ export default function TripDetail() {
   const [selectedMember, setSelectedMember] = useState('')
 
   const [showCosts, setShowCosts] = useState(true)
-  const [showSchedule, setShowSchedule] = useState(true)
+  const [showSchedule, setShowSchedule] = useState(false)
   const [showPayments, setShowPayments] = useState(true)
   const [showHistory, setShowHistory] = useState(true)
   const [showMembers, setShowMembers] = useState(true)
@@ -231,11 +231,86 @@ export default function TripDetail() {
     }
   }
 
+  const getDynamicSchedule = () => {
+  if (!trip || costs.length === 0) return []
+
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  const paymentDates = []
+  const count = getPaymentCount()
+  for (let i = 1; i <= count; i++) {
+    const date = new Date(today)
+    if (schedule === 'Weekly') date.setDate(date.getDate() + i * 7)
+    if (schedule === 'Fortnightly') date.setDate(date.getDate() + i * 14)
+    if (schedule === 'Monthly') date.setMonth(date.getMonth() + i)
+    paymentDates.push(date)
+  }
+
+  const costsWithTotals = costs.map(c => {
+    const amount = parseFloat(c.amount) || 0
+    let total = 0
+    if (c.split_type === 'group') total = amount / members.length
+    if (c.split_type === 'per person') total = amount
+    if (c.split_type === 'per person per day') total = amount * (trip?.trip_length_days || 1)
+    if (c.split_type === 'group per day') total = (amount * (trip?.trip_length_days || 1)) / members.length
+    return { ...c, perPersonTotal: total }
+  })
+
+  const minCumulative = paymentDates.map(payDate => {
+    return costsWithTotals.reduce((sum, c) => {
+      if (c.due_date && new Date(c.due_date + 'T00:00:00') <= payDate) {
+        return sum + c.perPersonTotal
+      }
+      return sum
+    }, 0)
+  })
+
+  const payments = []
+  let cumulative = 0
+
+  for (let i = 0; i < paymentDates.length; i++) {
+    const paymentsLeft = paymentDates.length - i
+
+    // Find the most demanding rate across ALL future deadlines
+    let requiredRate = (perPerson - cumulative) / paymentsLeft
+
+    for (let j = i; j < paymentDates.length; j++) {
+      if (minCumulative[j] > 0) {
+        const needed = minCumulative[j] - cumulative
+        const steps = j - i + 1
+        const rate = needed / steps
+        if (rate > requiredRate) requiredRate = rate
+      }
+    }
+
+    const amount = Math.round(Math.max(0, requiredRate) * 100) / 100
+
+    const dueItems = costsWithTotals.filter(c => {
+      if (!c.due_date) return false
+      const due = new Date(c.due_date + 'T00:00:00')
+      const prev = i > 0 ? paymentDates[i - 1] : today
+      return due > prev && due <= paymentDates[i]
+    })
+
+    payments.push({
+      date: paymentDates[i],
+      amount,
+      cumulative: cumulative + amount,
+      dueItems
+    })
+    cumulative += amount
+  }
+
+  return payments
+}
+
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#f5f4fb' }}>
       <p style={{ color: '#ab9f9d' }}>Loading...</p>
     </div>
   )
+
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#f5f4fb' }}>
@@ -269,19 +344,70 @@ export default function TripDetail() {
           </button>
           {showCosts && (
             <div>
-              <div className="space-y-3">
-                {costs.map((cost, i) => (
-                  <div key={i} className="flex justify-between items-center pb-2 border-b last:border-0" style={{ borderColor: '#dddbf1' }}>
-                    <div>
-                      <p className="font-medium text-sm" style={{ color: '#383f51' }}>{cost.label}</p>
-                      <p className="text-xs" style={{ color: '#ab9f9d' }}>{cost.split_type}</p>
+              {(() => {
+                // Group costs by due date
+                const grouped = costs.reduce((groups, cost) => {
+                  const key = cost.due_date || 'No date set'
+                  if (!groups[key]) groups[key] = []
+                  groups[key].push(cost)
+                  return groups
+                }, {})
+
+                // Sort groups by date
+                const sortedKeys = Object.keys(grouped).sort((a, b) => {
+                  if (a === 'No date set') return 1
+                  if (b === 'No date set') return -1
+                  return new Date(a) - new Date(b)
+                })
+
+                return sortedKeys.map(date => {
+                  const groupCosts = grouped[date]
+                  const groupTotal = groupCosts.reduce((sum, c) => {
+                    const amount = parseFloat(c.amount) || 0
+                    if (c.split_type === 'group') return sum + amount
+                    if (c.split_type === 'per person') return sum + amount * members.length
+                    if (c.split_type === 'per person per day') return sum + amount * members.length * (trip?.trip_length_days || 1)
+                    if (c.split_type === 'group per day') return sum + amount * (trip?.trip_length_days || 1)
+                    return sum + amount
+                  }, 0)
+                  const groupPerPerson = members.length > 0 ? groupTotal / members.length : 0
+                  const summary = groupCosts.map(c => c.label).join(' & ')
+
+                  return (
+                    <div key={date} className="mb-4 last:mb-0">
+                      <div className="flex justify-between items-center mb-2">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#ab9f9d' }}>
+                            {date === 'No date set' ? 'No date set' : `Due ${new Date(date + 'T00:00:00').toLocaleDateString('en-NZ', { day: 'numeric', month: 'long', year: 'numeric' })}`}
+                          </p>
+                          <p className="text-xs mt-0.5" style={{ color: '#ab9f9d' }}>{summary}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs" style={{ color: '#ab9f9d' }}>Per person</p>
+                          <p className="font-bold" style={{ color: '#3c4f76' }}>${groupPerPerson.toFixed(2)}</p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2 mb-2">
+                        {groupCosts.map((cost, i) => (
+                          <div key={i} className="flex justify-between items-center pl-3 py-1.5 rounded-lg" style={{ backgroundColor: '#f5f4fb' }}>
+                            <div>
+                              <p className="text-sm font-medium" style={{ color: '#383f51' }}>{cost.label}</p>
+                              <p className="text-xs" style={{ color: '#ab9f9d' }}>{cost.split_type}</p>
+                            </div>
+                            <p className="text-sm font-semibold" style={{ color: '#383f51' }}>${cost.amount}</p>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="border-t pt-2" style={{ borderColor: '#dddbf1' }} />
                     </div>
-                    <p className="font-semibold text-sm" style={{ color: '#383f51' }}>${cost.amount}</p>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-4 pt-4 flex justify-between items-center border-t" style={{ borderColor: '#dddbf1' }}>
-                <p className="font-bold" style={{ color: '#383f51' }}>Per Person</p>
+                  )
+                })
+              })()}
+
+              <div className="mt-2 pt-2 flex justify-between items-center">
+                <p className="font-bold" style={{ color: '#383f51' }}>Total per person</p>
                 <p className="font-bold text-lg" style={{ color: '#3c4f76' }}>${perPerson.toFixed(2)}</p>
               </div>
             </div>
@@ -290,12 +416,21 @@ export default function TripDetail() {
 
         {/* Payment Schedule */}
         <div className={sectionCard} style={sectionBorder}>
-          <button onClick={() => setShowSchedule(!showSchedule)} className={toggleBtn}>
-            <h3 className="text-lg font-semibold" style={{ color: '#383f51' }}>Payment Schedule</h3>
-            <span className="text-sm" style={{ color: '#ab9f9d' }}>{showSchedule ? '▲ Hide' : '▼ Show'}</span>
-          </button>
-          {showSchedule && (
+          {!showSchedule ? (
+            <button
+              onClick={() => setShowSchedule(true)}
+              className="text-sm font-medium transition hover:opacity-70"
+              style={{ color: '#3c4f76' }}
+            >
+              Calculate a payment schedule
+            </button>
+          ) : (
             <div>
+              <button onClick={() => setShowSchedule(false)} className={toggleBtn}>
+                <h3 className="text-lg font-semibold" style={{ color: '#383f51' }}>Payment Schedule</h3>
+                <span className="text-sm" style={{ color: '#ab9f9d' }}>▲ Hide</span>
+              </button>
+
               <div className="grid grid-cols-3 gap-3 mb-6">
                 {["Weekly", "Fortnightly", "Monthly"].map(s => (
                   <button
@@ -311,10 +446,40 @@ export default function TripDetail() {
                   </button>
                 ))}
               </div>
-              <div className="rounded-xl p-4 text-center" style={{ backgroundColor: '#f5f4fb' }}>
-                <p className="text-sm" style={{ color: '#ab9f9d' }}>{schedule} payment</p>
-                <p className="text-3xl font-bold mt-1" style={{ color: '#3c4f76' }}>${getPaymentAmount()}</p>
-                <p className="text-sm mt-1" style={{ color: '#ab9f9d' }}>per person · {getPaymentCount()} payments</p>
+
+              <div className="space-y-2">
+                {getDynamicSchedule().map((payment, i) => (
+                  <div
+                    key={i}
+                    className="rounded-xl px-4 py-3"
+                    style={{
+                      backgroundColor: payment.dueItems.length > 0 ? '#dddbf1' : '#f5f4fb',
+                      border: payment.dueItems.length > 0 ? '1px solid #3c4f76' : '1px solid #dddbf1'
+                    }}
+                  >
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <p className="text-sm font-semibold" style={{ color: '#383f51' }}>
+                          {payment.date.toLocaleDateString('en-NZ', { day: 'numeric', month: 'long', year: 'numeric' })}
+                        </p>
+                        {payment.dueItems.length > 0 && (
+                          <p className="text-xs mt-0.5" style={{ color: '#3c4f76' }}>
+                            Covers: {payment.dueItems.map(d => d.label).join(' & ')}
+                          </p>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <p className="text-lg font-bold" style={{ color: '#3c4f76' }}>${payment.amount.toFixed(2)}</p>
+                        <p className="text-xs" style={{ color: '#ab9f9d' }}>${payment.cumulative.toFixed(2)} total</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-4 pt-4 border-t flex justify-between" style={{ borderColor: '#dddbf1' }}>
+                <p className="text-sm font-semibold" style={{ color: '#383f51' }}>Total per person</p>
+                <p className="text-sm font-bold" style={{ color: '#3c4f76' }}>${perPerson.toFixed(2)}</p>
               </div>
             </div>
           )}
