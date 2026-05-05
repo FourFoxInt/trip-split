@@ -10,7 +10,7 @@ export default function Landing() {
 
       {/* Nav */}
       <nav className="flex justify-between items-center px-8 py-5 border-b" style={{ borderColor: theme.border, backgroundColor: theme.card }}>
-        <h1 className="text-2xl font-bold" style={{ color: theme.heading }}>Splitventure</h1>
+        <img src={mode === 'dark' ? '/logo-long-dark.png' : '/logo-long.png'} alt="Splitventure" className="h-8" />
         <div className="flex items-center gap-3">
           <button
             onClick={toggle}
@@ -40,7 +40,9 @@ export default function Landing() {
       </nav>
 
       {/* Hero */}
-      <section className="max-w-4xl mx-auto px-8 py-24 text-center">
+
+      <section className="max-w-4xl mx-auto px-8 pt-12 pb-24 text-center">
+        <img src={mode === 'dark' ? '/logo-full-dark.png' : '/logo-full.png'} alt="Splitventure" className="h-96 mx-auto mb-8" />
         <p className="text-sm font-semibold uppercase tracking-widest mb-4" style={{ color: theme.muted }}>
           Group travel, simplified
         </p>
@@ -48,7 +50,9 @@ export default function Landing() {
           Plan trips together.<br />Split costs fairly.
         </h2>
         <p className="text-xl mb-10 max-w-xl mx-auto" style={{ color: theme.muted }}>
-          Splitventure takes the stress out of group travel budgeting. Everyone stays informed, payments stay on track, and friendships stay intact.
+          <span className="font-bold" style={{ color: theme.muted }}>SPLIT</span>
+          <span style={{ color: theme.muted }}>VENTURE</span>
+          {' '}takes the stress out of group travel budgeting. Everyone stays informed, payments stay on track, and friendships stay intact.
         </p>
         <button
           onClick={() => navigate('/signup')}
