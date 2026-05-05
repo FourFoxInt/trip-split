@@ -6,6 +6,7 @@ import NewTrip from './pages/NewTrip.jsx'
 import Signup from './pages/Signup'
 import ProtectedRoute from './ProtectedRoute'
 import Landing from './pages/Landing'
+import Profile from './pages/Profile'
 
 export default function App() {
   return (
@@ -16,6 +17,7 @@ export default function App() {
       <Route path="/trip/:id" element={<ProtectedRoute><TripDetail /></ProtectedRoute>} />
       <Route path="/new-trip" element={<ProtectedRoute><NewTrip /></ProtectedRoute>} />
       <Route path="/signup" element={<Signup />} />
+      <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
     </Routes>
   )
 }

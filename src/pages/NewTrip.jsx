@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
+import { useTheme } from '../ThemeContext'
 
 export default function NewTrip() {
   const navigate = useNavigate()
+  const { theme } = useTheme()
   const [tripName, setTripName] = useState('')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
@@ -129,44 +131,42 @@ export default function NewTrip() {
     navigate(`/trip/${trip.id}`)
   }
 
-  const inputClass = "w-full rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-offset-1"
-  const inputStyle = { border: '1px solid #dddbf1', color: '#383f51' }
-  const labelStyle = { color: '#383f51' }
+  const inputClass = "w-full rounded-lg px-4 py-2 text-sm focus:outline-none"
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: '#f5f4fb' }}>
+    <div className="min-h-screen" style={{ backgroundColor: theme.bg }}>
 
-      <nav className="bg-white border-b px-6 py-4 flex justify-between items-center" style={{ borderColor: '#dddbf1' }}>
+      <nav className="border-b px-6 py-4 flex justify-between items-center" style={{ backgroundColor: theme.card, borderColor: theme.border }}>
         <button
           onClick={() => navigate('/dashboard')}
           className="text-sm font-medium transition hover:opacity-70"
-          style={{ color: '#3c4f76' }}
+          style={{ color: theme.accent }}
         >
           Back to Dashboard
         </button>
-        <h1 className="text-2xl font-bold" style={{ color: '#383f51' }}>Splitventure</h1>
+        <h1 className="text-2xl font-bold" style={{ color: theme.heading }}>Splitventure</h1>
       </nav>
 
       <div className="max-w-2xl mx-auto p-6 space-y-6">
 
-        <div className="bg-white rounded-2xl shadow-sm p-6" style={{ border: '1px solid #dddbf1' }}>
-          <h2 className="text-2xl font-bold mb-6" style={{ color: '#383f51' }}>Create New Trip</h2>
+        <div className="rounded-2xl shadow-sm p-6" style={{ backgroundColor: theme.card, border: `1px solid ${theme.border}` }}>
+          <h2 className="text-2xl font-bold mb-6" style={{ color: theme.heading }}>Create New Trip</h2>
 
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium mb-1" style={labelStyle}>Trip Name</label>
+              <label className="block text-sm font-medium mb-1" style={{ color: theme.heading }}>Trip Name</label>
               <input
                 type="text"
                 placeholder="e.g. Queenstown Weekend"
                 value={tripName}
                 onChange={e => setTripName(e.target.value)}
                 className={inputClass}
-                style={inputStyle}
+                style={{ border: `1px solid ${theme.border}`, color: theme.heading, backgroundColor: theme.bg }}
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-1" style={labelStyle}>Trip Start Date</label>
+              <label className="block text-sm font-medium mb-1" style={{ color: theme.heading }}>Trip Start Date</label>
               <input
                 type="date"
                 value={startDate}
@@ -175,44 +175,44 @@ export default function NewTrip() {
                   setCosts(costs.map(c => ({ ...c, dueDate: c.dueDate === '' || c.dueDate === startDate ? e.target.value : c.dueDate })))
                 }}
                 className={inputClass}
-                style={inputStyle}
+                style={{ border: `1px solid ${theme.border}`, color: theme.heading, backgroundColor: theme.bg }}
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-1" style={labelStyle}>Trip End Date</label>
+              <label className="block text-sm font-medium mb-1" style={{ color: theme.heading }}>Trip End Date</label>
               <input
                 type="date"
                 value={endDate}
                 min={startDate}
                 onChange={e => setEndDate(e.target.value)}
                 className={inputClass}
-                style={inputStyle}
+                style={{ border: `1px solid ${theme.border}`, color: theme.heading, backgroundColor: theme.bg }}
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-1" style={labelStyle}>Invite Members (comma separated emails)</label>
+              <label className="block text-sm font-medium mb-1" style={{ color: theme.heading }}>Invite Members (comma separated emails)</label>
               <input
                 type="text"
                 placeholder="friend1@email.com, friend2@email.com"
                 value={members}
                 onChange={e => setMembers(e.target.value)}
                 className={inputClass}
-                style={inputStyle}
+                style={{ border: `1px solid ${theme.border}`, color: theme.heading, backgroundColor: theme.bg }}
               />
-              <p className="text-xs mt-1" style={{ color: '#ab9f9d' }}>You are automatically added as the trip organiser.</p>
+              <p className="text-xs mt-1" style={{ color: theme.muted }}>You are automatically added as the trip organiser.</p>
             </div>
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-sm p-6" style={{ border: '1px solid #dddbf1' }}>
+        <div className="rounded-2xl shadow-sm p-6" style={{ backgroundColor: theme.card, border: `1px solid ${theme.border}` }}>
           <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-semibold" style={{ color: '#383f51' }}>Costs</h3>
+            <h3 className="text-lg font-semibold" style={{ color: theme.heading }}>Costs</h3>
             <button
               onClick={addCost}
               className="text-sm font-medium transition hover:opacity-70"
-              style={{ color: '#3c4f76' }}
+              style={{ color: theme.accent }}
             >
               + Add Cost
             </button>
@@ -227,7 +227,7 @@ export default function NewTrip() {
                   value={cost.label}
                   onChange={e => updateCost(i, 'label', e.target.value)}
                   className="col-span-3 rounded-lg px-3 py-2 text-sm focus:outline-none"
-                  style={{ border: '1px solid #dddbf1', color: '#383f51' }}
+                  style={{ border: `1px solid ${theme.border}`, color: theme.heading, backgroundColor: theme.bg }}
                 />
                 <input
                   type="number"
@@ -235,13 +235,13 @@ export default function NewTrip() {
                   value={cost.amount}
                   onChange={e => updateCost(i, 'amount', e.target.value)}
                   className="col-span-2 rounded-lg px-3 py-2 text-sm focus:outline-none"
-                  style={{ border: '1px solid #dddbf1', color: '#383f51' }}
+                  style={{ border: `1px solid ${theme.border}`, color: theme.heading, backgroundColor: theme.bg }}
                 />
                 <select
                   value={cost.splitType}
                   onChange={e => updateCost(i, 'splitType', e.target.value)}
                   className="col-span-3 rounded-lg px-3 py-2 text-sm focus:outline-none"
-                  style={{ border: '1px solid #dddbf1', color: '#383f51' }}
+                  style={{ border: `1px solid ${theme.border}`, color: theme.heading, backgroundColor: theme.bg }}
                 >
                   <option value="per person">Per Person</option>
                   <option value="group">Group Split</option>
@@ -254,12 +254,12 @@ export default function NewTrip() {
                   max={endDate}
                   onChange={e => updateCost(i, 'dueDate', e.target.value)}
                   className="col-span-3 rounded-lg px-3 py-2 text-sm focus:outline-none"
-                  style={{ border: '1px solid #dddbf1', color: '#383f51' }}
+                  style={{ border: `1px solid ${theme.border}`, color: theme.heading, backgroundColor: theme.bg }}
                 />
                 <button
                   onClick={() => removeCost(i)}
                   className="col-span-1 text-lg font-bold text-center transition hover:opacity-70"
-                  style={{ color: '#ab9f9d' }}
+                  style={{ color: theme.muted }}
                 >
                   ×
                 </button>
@@ -271,36 +271,36 @@ export default function NewTrip() {
         <button
           onClick={handleCreate}
           className="w-full text-white font-semibold py-3 rounded-xl transition hover:opacity-90"
-          style={{ backgroundColor: '#3c4f76' }}
+          style={{ backgroundColor: theme.accent }}
         >
           Preview Trip
         </button>
 
         {summary && (
-          <div className="bg-white rounded-2xl shadow-sm p-6 space-y-3" style={{ border: '1px solid #dddbf1' }}>
-            <h3 className="text-lg font-semibold" style={{ color: '#383f51' }}>Trip Summary</h3>
+          <div className="rounded-2xl shadow-sm p-6 space-y-3" style={{ backgroundColor: theme.card, border: `1px solid ${theme.border}` }}>
+            <h3 className="text-lg font-semibold" style={{ color: theme.heading }}>Trip Summary</h3>
 
             <div className="space-y-2 text-sm">
-              <p style={{ color: '#ab9f9d' }}>Trip: <span className="font-semibold" style={{ color: '#383f51' }}>{summary.tripName}</span></p>
-              <p style={{ color: '#ab9f9d' }}>Dates: <span className="font-semibold" style={{ color: '#383f51' }}>{summary.startDate} → {summary.endDate}</span></p>
-              <p style={{ color: '#ab9f9d' }}>Trip Length: <span className="font-semibold" style={{ color: '#383f51' }}>{summary.tripLengthDays} days</span></p>
-              <p style={{ color: '#ab9f9d' }}>Weeks until trip: <span className="font-semibold" style={{ color: '#383f51' }}>{summary.weeksUntil} ({summary.daysUntilTrip} days)</span></p>
-              <p style={{ color: '#ab9f9d' }}>Invited members: <span className="font-semibold" style={{ color: '#383f51' }}>{summary.memberList.length > 0 ? summary.memberList.join(', ') : 'None'}</span></p>
-              <p style={{ color: '#ab9f9d' }}>Total Cost: <span className="font-semibold" style={{ color: '#3c4f76' }}>${summary.totalCost.toFixed(2)}</span></p>
-              <p style={{ color: '#ab9f9d' }}>Per Person: <span className="font-semibold" style={{ color: '#3c4f76' }}>${summary.perPerson.toFixed(2)}</span></p>
+              <p style={{ color: theme.muted }}>Trip: <span className="font-semibold" style={{ color: theme.heading }}>{summary.tripName}</span></p>
+              <p style={{ color: theme.muted }}>Dates: <span className="font-semibold" style={{ color: theme.heading }}>{summary.startDate} → {summary.endDate}</span></p>
+              <p style={{ color: theme.muted }}>Trip Length: <span className="font-semibold" style={{ color: theme.heading }}>{summary.tripLengthDays} days</span></p>
+              <p style={{ color: theme.muted }}>Weeks until trip: <span className="font-semibold" style={{ color: theme.heading }}>{summary.weeksUntil} ({summary.daysUntilTrip} days)</span></p>
+              <p style={{ color: theme.muted }}>Invited members: <span className="font-semibold" style={{ color: theme.heading }}>{summary.memberList.length > 0 ? summary.memberList.join(', ') : 'None'}</span></p>
+              <p style={{ color: theme.muted }}>Total Cost: <span className="font-semibold" style={{ color: theme.accent }}>${summary.totalCost.toFixed(2)}</span></p>
+              <p style={{ color: theme.muted }}>Per Person: <span className="font-semibold" style={{ color: theme.accent }}>${summary.perPerson.toFixed(2)}</span></p>
             </div>
 
-            <div className="rounded-xl p-4 space-y-2" style={{ backgroundColor: '#f5f4fb' }}>
-              <p className="text-sm font-medium" style={{ color: '#383f51' }}>Payment options</p>
-              <p className="text-sm" style={{ color: '#ab9f9d' }}>Weekly: <span className="font-semibold" style={{ color: '#383f51' }}>${summary.weekly}</span></p>
-              <p className="text-sm" style={{ color: '#ab9f9d' }}>Fortnightly: <span className="font-semibold" style={{ color: '#383f51' }}>${summary.fortnightly}</span></p>
-              <p className="text-sm" style={{ color: '#ab9f9d' }}>Monthly: <span className="font-semibold" style={{ color: '#383f51' }}>${summary.monthly}</span></p>
+            <div className="rounded-xl p-4 space-y-2" style={{ backgroundColor: theme.subtle }}>
+              <p className="text-sm font-medium" style={{ color: theme.heading }}>Payment options</p>
+              <p className="text-sm" style={{ color: theme.muted }}>Weekly: <span className="font-semibold" style={{ color: theme.heading }}>${summary.weekly}</span></p>
+              <p className="text-sm" style={{ color: theme.muted }}>Fortnightly: <span className="font-semibold" style={{ color: theme.heading }}>${summary.fortnightly}</span></p>
+              <p className="text-sm" style={{ color: theme.muted }}>Monthly: <span className="font-semibold" style={{ color: theme.heading }}>${summary.monthly}</span></p>
             </div>
 
             <button
               onClick={handleSave}
               className="w-full text-white font-semibold py-3 rounded-xl transition hover:opacity-90 mt-2"
-              style={{ backgroundColor: '#383f51' }}
+              style={{ backgroundColor: theme.heading }}
             >
               Confirm & Save Trip
             </button>
