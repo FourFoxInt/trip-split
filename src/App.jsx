@@ -7,6 +7,7 @@ import Signup from './pages/Signup'
 import ProtectedRoute from './ProtectedRoute'
 import Landing from './pages/Landing'
 import Profile from './pages/Profile'
+import DemoTrip from './pages/DemoTrip'
 
 export default function App() {
   return (
@@ -18,6 +19,7 @@ export default function App() {
       <Route path="/new-trip" element={<ProtectedRoute><NewTrip /></ProtectedRoute>} />
       <Route path="/signup" element={<Signup />} />
       <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+      <Route path="/demo" element={<ProtectedRoute><DemoTrip /></ProtectedRoute>} />
     </Routes>
   )
 }

@@ -414,7 +414,7 @@ export default function TripDetail() {
                       </div>
                       <div className="space-y-2 mb-2">
                         {groupCosts.map((cost, i) => (
-                          <div key={i} className="flex justify-between items-center pl-3 py-1.5 rounded-lg" style={{ backgroundColor: theme.subtle }}>
+                          <div key={i} className="flex justify-between items-center px-3 py-1.5 rounded-lg" style={{ backgroundColor: theme.subtle }}>
                             <div>
                               <p className="text-sm font-medium" style={{ color: theme.heading }}>{cost.label}</p>
                               <p className="text-xs" style={{ color: theme.muted }}>{cost.split_type}</p>

@@ -91,9 +91,39 @@ export default function Dashboard() {
         </div>
 
         {trips.length === 0 ? (
-          <div className="rounded-2xl shadow-sm p-8 text-center" style={{ backgroundColor: theme.card, border: `1px solid ${theme.border}` }}>
-            <p className="text-lg font-medium mb-1" style={{ color: theme.heading }}>No trips yet!</p>
-            <p className="text-sm" style={{ color: theme.muted }}>Create your first trip to get started.</p>
+          <div>
+            <div className="rounded-2xl shadow-sm p-8 text-center mb-4" style={{ backgroundColor: theme.card, border: `1px solid ${theme.border}` }}>
+              <p className="text-lg font-medium mb-1" style={{ color: theme.heading }}>No trips yet!</p>
+              <p className="text-sm mb-4" style={{ color: theme.muted }}>Create your first trip to get started.</p>
+              <button
+                onClick={() => navigate('/new-trip')}
+                className="text-white px-6 py-2 rounded-lg text-sm font-semibold transition hover:opacity-90"
+                style={{ backgroundColor: theme.accent }}
+              >
+                + Create your first trip
+              </button>
+            </div>
+
+            <div
+              onClick={() => navigate('/demo')}
+              className="rounded-2xl shadow-sm p-6 cursor-pointer transition hover:shadow-md"
+              style={{ backgroundColor: theme.card, border: `1px solid ${theme.border}`, opacity: 0.8 }}
+            >
+              <div className="flex justify-between items-center">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <h3 className="text-lg font-semibold" style={{ color: theme.heading }}>Taylor Swift Concert</h3>
+                    <span className="text-xs px-2 py-1 rounded-full font-semibold" style={{ backgroundColor: theme.subtle, color: theme.muted }}>Demo</span>
+                  </div>
+                  <p className="text-sm" style={{ color: theme.muted }}>2025-12-15 → 2025-12-17</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs" style={{ color: theme.muted }}>3 days</p>
+                  <p className="text-xs mt-1" style={{ color: theme.muted }}>5 members</p>
+                </div>
+              </div>
+            </div>
+            <p className="text-xs text-center mt-2" style={{ color: theme.muted }}>This is an example trip — tap to preview</p>
           </div>
         ) : (
           <div className="space-y-4">
