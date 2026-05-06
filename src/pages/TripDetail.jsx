@@ -528,15 +528,17 @@ export default function TripDetail() {
                 <p className="text-sm font-medium mb-2" style={{ color: theme.heading }}>
                   {currentUser.isAdmin ? 'Log a payment on behalf of a member' : 'Log your payment'}
                 </p>
-                <div className="flex gap-2">
+                <div className="flex flex-col gap-2">
                   {currentUser.isAdmin && (
-                    <select value={selectedMember} onChange={e => setSelectedMember(e.target.value)} className="rounded-lg px-3 py-2 text-sm focus:outline-none" style={{ border: `1px solid ${theme.border}`, color: theme.heading, backgroundColor: theme.bg }}>
+                    <select value={selectedMember} onChange={e => setSelectedMember(e.target.value)} className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none" style={{ border: `1px solid ${theme.border}`, color: theme.heading, backgroundColor: theme.bg }}>
                       <option value="" disabled>Select member</option>
                       {members.map((member, i) => <option key={i} value={member.user_id}>{member.profiles?.name}</option>)}
                     </select>
                   )}
-                  <input type="number" placeholder="Amount $" value={newPayment} onChange={e => setNewPayment(e.target.value)} onKeyDown={e => e.key === 'Enter' && addPayment()} className="flex-1 rounded-lg px-4 py-2 text-sm focus:outline-none" style={{ border: `1px solid ${theme.border}`, color: theme.heading, backgroundColor: theme.bg }} />
-                  <button onClick={addPayment} className="text-white px-4 py-2 rounded-lg text-sm font-semibold transition hover:opacity-90" style={{ backgroundColor: theme.accent }}>Log</button>
+                  <div className="flex gap-2">
+                    <input type="number" placeholder="Amount $" value={newPayment} onChange={e => setNewPayment(e.target.value)} onKeyDown={e => e.key === 'Enter' && addPayment()} className="flex-1 rounded-lg px-4 py-2 text-sm focus:outline-none" style={{ border: `1px solid ${theme.border}`, color: theme.heading, backgroundColor: theme.bg }} />
+                    <button onClick={addPayment} className="text-white px-4 py-2 rounded-lg text-sm font-semibold transition hover:opacity-90" style={{ backgroundColor: theme.accent }}>Log</button>
+                  </div>
                 </div>
               </div>
             </div>
