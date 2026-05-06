@@ -225,31 +225,6 @@ export default function DemoTrip() {
                         </div>
 
                         <div className={sectionCard} style={{ backgroundColor: theme.card, border: `1px solid ${theme.border}` }}>
-                            <h3 className="text-lg font-semibold mb-4" style={{ color: theme.heading }}>Payment Tracker</h3>
-                            <div className="space-y-4">
-                                {demoTrip.members.map((member, i) => {
-                                    const paid = demoTrip.payments.filter(p => p.author === member).reduce((sum, p) => sum + p.amount, 0)
-                                    const remaining = perPerson - paid
-                                    const percent = Math.min((paid / perPerson) * 100, 100).toFixed(0)
-                                    return (
-                                        <div key={i}>
-                                            <div className="flex justify-between items-center mb-1">
-                                                <p className="text-sm font-medium" style={{ color: theme.heading }}>{member}</p>
-                                                <p className="text-sm" style={{ color: theme.muted }}>${paid.toFixed(2)} of ${perPerson.toFixed(2)}</p>
-                                            </div>
-                                            <div className="w-full rounded-full h-2" style={{ backgroundColor: theme.border }}>
-                                                <div className="h-2 rounded-full transition-all" style={{ width: `${percent}%`, backgroundColor: theme.accent }} />
-                                            </div>
-                                            <p className="text-xs mt-1" style={{ color: remaining <= 0 ? theme.success : theme.muted }}>
-                                                {remaining <= 0 ? 'Fully paid!' : `$${remaining.toFixed(2)} remaining`}
-                                            </p>
-                                        </div>
-                                    )
-                                })}
-                            </div>
-                        </div>
-
-                        <div className={sectionCard} style={{ backgroundColor: theme.card, border: `1px solid ${theme.border}` }}>
                             {!showSchedule ? (
                                 <button onClick={() => setShowSchedule(true)} className="text-sm font-medium transition hover:opacity-70" style={{ color: theme.accent }}>
                                     Calculate a payment schedule
@@ -291,6 +266,33 @@ export default function DemoTrip() {
                                 </div>
                             )}
                         </div>
+
+                        <div className={sectionCard} style={{ backgroundColor: theme.card, border: `1px solid ${theme.border}` }}>
+                            <h3 className="text-lg font-semibold mb-4" style={{ color: theme.heading }}>Payment Tracker</h3>
+                            <div className="space-y-4">
+                                {demoTrip.members.map((member, i) => {
+                                    const paid = demoTrip.payments.filter(p => p.author === member).reduce((sum, p) => sum + p.amount, 0)
+                                    const remaining = perPerson - paid
+                                    const percent = Math.min((paid / perPerson) * 100, 100).toFixed(0)
+                                    return (
+                                        <div key={i}>
+                                            <div className="flex justify-between items-center mb-1">
+                                                <p className="text-sm font-medium" style={{ color: theme.heading }}>{member}</p>
+                                                <p className="text-sm" style={{ color: theme.muted }}>${paid.toFixed(2)} of ${perPerson.toFixed(2)}</p>
+                                            </div>
+                                            <div className="w-full rounded-full h-2" style={{ backgroundColor: theme.border }}>
+                                                <div className="h-2 rounded-full transition-all" style={{ width: `${percent}%`, backgroundColor: theme.accent }} />
+                                            </div>
+                                            <p className="text-xs mt-1" style={{ color: remaining <= 0 ? theme.success : theme.muted }}>
+                                                {remaining <= 0 ? 'Fully paid!' : `$${remaining.toFixed(2)} remaining`}
+                                            </p>
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        </div>
+
+
 
                     </div>
 
