@@ -9,19 +9,22 @@ export default function Landing() {
     <div className="min-h-screen font-sans" style={{ backgroundColor: theme.bg }}>
 
       {/* Nav */}
-      <nav className="flex justify-between items-center px-8 py-5 border-b" style={{ borderColor: theme.border, backgroundColor: theme.card }}>
-        <img src={mode === 'dark' ? '/logo-long-dark.png' : '/logo-long.png'} alt="Splitventure" className="h-8" />
+      <nav className="flex justify-between items-center px-8 py-0 md:py-5 border-b" style={{ borderColor: theme.border, backgroundColor: theme.card }}>
+
+        {/* Desktop logo */}
+        <img
+          src="/logo-long.png"
+          alt="Splitventure"
+          className="h-10 hidden md:block"
+        />
+        {/* Mobile logo */}
+        <img
+          src="/logo-icon.png"
+          alt="Splitventure"
+          className="h-20 block md:hidden"
+        />
+
         <div className="flex items-center gap-3">
-          <button
-            onClick={toggle}
-            className="w-12 h-6 rounded-full transition-all relative"
-            style={{ backgroundColor: mode === 'dark' ? theme.accent : theme.border }}
-          >
-            <div
-              className="w-4 h-4 rounded-full bg-white absolute top-1 transition-all"
-              style={{ left: mode === 'dark' ? '26px' : '4px' }}
-            />
-          </button>
           <button
             onClick={() => navigate('/login')}
             className="text-sm font-medium px-4 py-2 rounded-lg transition hover:opacity-70"
@@ -42,7 +45,7 @@ export default function Landing() {
       {/* Hero */}
 
       <section className="max-w-4xl mx-auto px-8 pt-12 pb-24 text-center">
-        <img src={mode === 'dark' ? '/logo-full-dark.png' : '/logo-full.png'} alt="Splitventure" className="h-96 mx-auto mb-8" />
+        <img src={mode === 'dark' ? '/logo-full-dark.png' : '/logo-full.png'} alt="Splitventure" className="w-128 max-w-full h-auto mx-auto mb-8" />
         <p className="text-sm font-semibold uppercase tracking-widest mb-4" style={{ color: theme.muted }}>
           Group travel, simplified
         </p>

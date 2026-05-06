@@ -15,23 +15,17 @@ export default function TripDetail() {
   const [feed, setFeed] = useState([])
   const [currentUser, setCurrentUser] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState('home')
 
   const [schedule, setSchedule] = useState('Weekly')
   const [newComment, setNewComment] = useState('')
   const [newPayment, setNewPayment] = useState('')
   const [selectedMember, setSelectedMember] = useState('')
-
-  const [showCosts, setShowCosts] = useState(true)
   const [showSchedule, setShowSchedule] = useState(false)
-  const [showPayments, setShowPayments] = useState(true)
-  const [showHistory, setShowHistory] = useState(true)
-  const [showMembers, setShowMembers] = useState(true)
-  const [showFeed, setShowFeed] = useState(true)
   const [reactions, setReactions] = useState([])
   const [replyingTo, setReplyingTo] = useState(null)
   const [replyText, setReplyText] = useState('')
 
-  const [activeFeedTab, setActiveFeedTab] = useState('feed')
   const [votes, setVotes] = useState([])
   const [voteOptions, setVoteOptions] = useState([])
   const [voteResponses, setVoteResponses] = useState([])
@@ -40,6 +34,10 @@ export default function TripDetail() {
   const [newVoteEndDate, setNewVoteEndDate] = useState('')
   const [newVoteOptions, setNewVoteOptions] = useState(['', ''])
 
+  const [editingDetails, setEditingDetails] = useState(false)
+  const [locationInput, setLocationInput] = useState('')
+  const [hotelInput, setHotelInput] = useState('')
+
   useEffect(() => {
     const loadData = async () => {
       const { data: { session } } = await supabase.auth.getSession()
@@ -47,6 +45,8 @@ export default function TripDetail() {
 
       const { data: tripData } = await supabase.from('trips').select('*').eq('id', id).single()
       setTrip(tripData)
+      setLocationInput(tripData?.location || '')
+      setHotelInput(tripData?.hotel_address || '')
 
       const { data: costsData } = await supabase.from('trip_costs').select('*').eq('trip_id', id)
       setCosts(costsData || [])
@@ -63,11 +63,9 @@ export default function TripDetail() {
       const { data: feedData } = await supabase.from('feed_posts').select('*, profiles(name)').eq('trip_id', id).order('created_at', { ascending: true })
       setFeed(feedData || [])
 
-      const { data: reactionsData } = await supabase
-        .from('post_reactions')
-        .select('*, profiles(name)')
-        .in('post_id', feedData?.map(p => p.id) || [])
+      const { data: reactionsData } = await supabase.from('post_reactions').select('*, profiles(name)').in('post_id', feedData?.map(p => p.id) || [])
       setReactions(reactionsData || [])
+
       await loadVotes()
       setLoading(false)
     }
@@ -94,6 +92,66 @@ export default function TripDetail() {
 
   const getPaymentAmount = () => (perPerson / getPaymentCount()).toFixed(2)
 
+  const getDynamicSchedule = () => {
+    if (!trip || costs.length === 0) return []
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const paymentDates = []
+    const count = getPaymentCount()
+    for (let i = 1; i <= count; i++) {
+      const date = new Date(today)
+      if (schedule === 'Weekly') date.setDate(date.getDate() + i * 7)
+      if (schedule === 'Fortnightly') date.setDate(date.getDate() + i * 14)
+      if (schedule === 'Monthly') date.setMonth(date.getMonth() + i)
+      paymentDates.push(date)
+    }
+    const costsWithTotals = costs.map(c => {
+      const amount = parseFloat(c.amount) || 0
+      let total = 0
+      if (c.split_type === 'group') total = amount / members.length
+      if (c.split_type === 'per person') total = amount
+      if (c.split_type === 'per person per day') total = amount * (trip?.trip_length_days || 1)
+      if (c.split_type === 'group per day') total = (amount * (trip?.trip_length_days || 1)) / members.length
+      return { ...c, perPersonTotal: total }
+    })
+    const minCumulative = paymentDates.map(payDate =>
+      costsWithTotals.reduce((sum, c) => {
+        if (c.due_date && new Date(c.due_date + 'T00:00:00') <= payDate) return sum + c.perPersonTotal
+        return sum
+      }, 0)
+    )
+    const schedulePayments = []
+    let cumulative = 0
+    for (let i = 0; i < paymentDates.length; i++) {
+      const paymentsLeft = paymentDates.length - i
+      let requiredRate = (perPerson - cumulative) / paymentsLeft
+      for (let j = i; j < paymentDates.length; j++) {
+        if (minCumulative[j] > 0) {
+          const needed = minCumulative[j] - cumulative
+          const steps = j - i + 1
+          const rate = needed / steps
+          if (rate > requiredRate) requiredRate = rate
+        }
+      }
+      const amount = Math.round(Math.max(0, requiredRate) * 100) / 100
+      const dueItems = costsWithTotals.filter(c => {
+        if (!c.due_date) return false
+        const due = new Date(c.due_date + 'T00:00:00')
+        const prev = i > 0 ? paymentDates[i - 1] : today
+        return due > prev && due <= paymentDates[i]
+      })
+      schedulePayments.push({ date: paymentDates[i], amount, cumulative: cumulative + amount, dueItems })
+      cumulative += amount
+    }
+    return schedulePayments
+  }
+
+  const saveDetails = async () => {
+    await supabase.from('trips').update({ location: locationInput, hotel_address: hotelInput }).eq('id', id)
+    setTrip({ ...trip, location: locationInput, hotel_address: hotelInput })
+    setEditingDetails(false)
+  }
+
   const addReply = async (parentId) => {
     if (!replyText.trim()) return
     setReplyText('')
@@ -109,6 +167,17 @@ export default function TripDetail() {
     await supabase.from('feed_posts').insert({ trip_id: id, user_id: currentUser.id, message: newComment })
     const { data: refreshedFeed } = await supabase.from('feed_posts').select('*, profiles(name)').eq('trip_id', id).order('created_at', { ascending: true })
     setFeed(refreshedFeed || [])
+  }
+
+  const toggleReaction = async (postId) => {
+    const existing = reactions.find(r => r.post_id === postId && r.user_id === currentUser.id)
+    if (existing) {
+      await supabase.from('post_reactions').delete().eq('id', existing.id)
+      setReactions(reactions.filter(r => r.id !== existing.id))
+    } else {
+      const { data } = await supabase.from('post_reactions').insert({ post_id: postId, user_id: currentUser.id }).select('*, profiles(name)').single()
+      setReactions([...reactions, data])
+    }
   }
 
   const addVoteOption = () => setNewVoteOptions([...newVoteOptions, ''])
@@ -159,73 +228,8 @@ export default function TripDetail() {
     setPayments(refreshedPayments || [])
   }
 
-  const toggleReaction = async (postId) => {
-    const existing = reactions.find(r => r.post_id === postId && r.user_id === currentUser.id)
-    if (existing) {
-      await supabase.from('post_reactions').delete().eq('id', existing.id)
-      setReactions(reactions.filter(r => r.id !== existing.id))
-    } else {
-      const { data } = await supabase.from('post_reactions').insert({ post_id: postId, user_id: currentUser.id }).select('*, profiles(name)').single()
-      setReactions([...reactions, data])
-    }
-  }
-
-  const getDynamicSchedule = () => {
-    if (!trip || costs.length === 0) return []
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const paymentDates = []
-    const count = getPaymentCount()
-    for (let i = 1; i <= count; i++) {
-      const date = new Date(today)
-      if (schedule === 'Weekly') date.setDate(date.getDate() + i * 7)
-      if (schedule === 'Fortnightly') date.setDate(date.getDate() + i * 14)
-      if (schedule === 'Monthly') date.setMonth(date.getMonth() + i)
-      paymentDates.push(date)
-    }
-    const costsWithTotals = costs.map(c => {
-      const amount = parseFloat(c.amount) || 0
-      let total = 0
-      if (c.split_type === 'group') total = amount / members.length
-      if (c.split_type === 'per person') total = amount
-      if (c.split_type === 'per person per day') total = amount * (trip?.trip_length_days || 1)
-      if (c.split_type === 'group per day') total = (amount * (trip?.trip_length_days || 1)) / members.length
-      return { ...c, perPersonTotal: total }
-    })
-    const minCumulative = paymentDates.map(payDate =>
-      costsWithTotals.reduce((sum, c) => {
-        if (c.due_date && new Date(c.due_date + 'T00:00:00') <= payDate) return sum + c.perPersonTotal
-        return sum
-      }, 0)
-    )
-    const payments = []
-    let cumulative = 0
-    for (let i = 0; i < paymentDates.length; i++) {
-      const paymentsLeft = paymentDates.length - i
-      let requiredRate = (perPerson - cumulative) / paymentsLeft
-      for (let j = i; j < paymentDates.length; j++) {
-        if (minCumulative[j] > 0) {
-          const needed = minCumulative[j] - cumulative
-          const steps = j - i + 1
-          const rate = needed / steps
-          if (rate > requiredRate) requiredRate = rate
-        }
-      }
-      const amount = Math.round(Math.max(0, requiredRate) * 100) / 100
-      const dueItems = costsWithTotals.filter(c => {
-        if (!c.due_date) return false
-        const due = new Date(c.due_date + 'T00:00:00')
-        const prev = i > 0 ? paymentDates[i - 1] : today
-        return due > prev && due <= paymentDates[i]
-      })
-      payments.push({ date: paymentDates[i], amount, cumulative: cumulative + amount, dueItems })
-      cumulative += amount
-    }
-    return payments
-  }
-
-  const sectionCard = "rounded-2xl shadow-sm p-6"
-  const toggleBtn = "w-full flex justify-between items-center mb-4"
+  const sectionCard = "rounded-2xl shadow-sm p-6 mb-4"
+  const hasPendingVotes = votes.some(v => !v.closed && !voteResponses.find(r => r.vote_id === v.id && r.user_id === currentUser?.id))
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: theme.bg }}>
@@ -233,34 +237,143 @@ export default function TripDetail() {
     </div>
   )
 
+  const tabs = [
+    { id: 'home', label: 'Home' },
+    { id: 'costs', label: 'Costs' },
+    { id: 'social', label: 'Social' },
+    { id: 'polls', label: hasPendingVotes ? 'Polls ●' : 'Polls' },
+  ]
+
   return (
     <div className="min-h-screen" style={{ backgroundColor: theme.bg }}>
 
+      {/* Nav */}
       <nav className="border-b px-6 py-4 flex justify-between items-center" style={{ backgroundColor: theme.card, borderColor: theme.border }}>
         <button onClick={() => navigate('/dashboard')} className="text-sm font-medium transition hover:opacity-70" style={{ color: theme.accent }}>
-          Back to Dashboard
+          Back
         </button>
-        <h1 className="text-2xl font-bold" style={{ color: theme.heading }}>Splitventure</h1>
+        <h1 className="text-lg font-bold" style={{ color: theme.heading }}>{trip?.name}</h1>
+        <div style={{ width: 40 }} />
       </nav>
 
-      <div className="max-w-2xl mx-auto p-6 space-y-6">
-
-        {/* Trip Header */}
-        <div className={sectionCard} style={{ backgroundColor: theme.card, border: `1px solid ${theme.border}` }}>
-          <h2 className="text-2xl font-bold mb-1" style={{ color: theme.heading }}>{trip?.name}</h2>
-          <p className="text-sm" style={{ color: theme.muted }}>
-            {trip?.start_date} → {trip?.end_date} · {trip?.trip_length_days} days · {members.length} members
-          </p>
+      {/* Tabs */}
+      <div className="border-b sticky top-0 z-10" style={{ backgroundColor: theme.card, borderColor: theme.border }}>
+        <div className="max-w-2xl mx-auto flex">
+          {tabs.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className="flex-1 py-3 text-sm font-semibold transition"
+              style={activeTab === tab.id
+                ? { color: theme.accent, borderBottom: `2px solid ${theme.accent}` }
+                : { color: theme.muted }
+              }
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
+      </div>
 
-        {/* Cost Breakdown */}
-        <div className={sectionCard} style={{ backgroundColor: theme.card, border: `1px solid ${theme.border}` }}>
-          <button onClick={() => setShowCosts(!showCosts)} className={toggleBtn}>
-            <h3 className="text-lg font-semibold" style={{ color: theme.heading }}>Cost Breakdown</h3>
-            <span className="text-sm" style={{ color: theme.muted }}>{showCosts ? '▲ Hide' : '▼ Show'}</span>
-          </button>
-          {showCosts && (
-            <div>
+      <div className="max-w-2xl mx-auto p-4">
+
+        {/* HOME TAB */}
+        {activeTab === 'home' && (
+          <div>
+            <div className={sectionCard} style={{ backgroundColor: theme.card, border: `1px solid ${theme.border}` }}>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <p style={{ color: theme.muted }}>Dates</p>
+                  <p className="font-medium" style={{ color: theme.heading }}>{trip?.start_date} → {trip?.end_date}</p>
+                </div>
+                <div className="flex justify-between">
+                  <p style={{ color: theme.muted }}>Duration</p>
+                  <p className="font-medium" style={{ color: theme.heading }}>{trip?.trip_length_days} days</p>
+                </div>
+                <div className="flex justify-between">
+                  <p style={{ color: theme.muted }}>Members</p>
+                  <p className="font-medium" style={{ color: theme.heading }}>{members.length} people</p>
+                </div>
+                <div className="flex justify-between">
+                  <p style={{ color: theme.muted }}>Total per person</p>
+                  <p className="font-bold" style={{ color: theme.accent }}>${perPerson.toFixed(2)}</p>
+                </div>
+                <div className="flex justify-between">
+                  <p style={{ color: theme.muted }}>Time until trip</p>
+                  <p className="font-medium" style={{ color: theme.heading }}>{trip?.weeks_until} weeks ({trip?.days_until} days)</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Location & Hotel */}
+            <div className={sectionCard} style={{ backgroundColor: theme.card, border: `1px solid ${theme.border}` }}>
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold" style={{ color: theme.heading }}>Trip Details</h3>
+                {currentUser.isAdmin && !editingDetails && (
+                  <button onClick={() => setEditingDetails(true)} className="text-sm transition hover:opacity-70" style={{ color: theme.accent }}>
+                    {trip?.location || trip?.hotel_address ? 'Edit' : '+ Add Details'}
+                  </button>
+                )}
+              </div>
+
+              {editingDetails ? (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs mb-1" style={{ color: theme.muted }}>Location</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Queenstown, New Zealand"
+                      value={locationInput}
+                      onChange={e => setLocationInput(e.target.value)}
+                      className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
+                      style={{ border: `1px solid ${theme.border}`, color: theme.heading, backgroundColor: theme.bg }}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs mb-1" style={{ color: theme.muted }}>Hotel / Accommodation Address</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 123 Main St, Queenstown"
+                      value={hotelInput}
+                      onChange={e => setHotelInput(e.target.value)}
+                      className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
+                      style={{ border: `1px solid ${theme.border}`, color: theme.heading, backgroundColor: theme.bg }}
+                    />
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <button onClick={saveDetails} className="text-white px-4 py-2 rounded-lg text-sm font-semibold transition hover:opacity-90" style={{ backgroundColor: theme.accent }}>Save</button>
+                    <button onClick={() => setEditingDetails(false)} className="px-4 py-2 rounded-lg text-sm transition hover:opacity-70" style={{ color: theme.muted }}>Cancel</button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2 text-sm">
+                  {trip?.location ? (
+                    <div className="flex justify-between">
+                      <p style={{ color: theme.muted }}>Location</p>
+                      <p className="font-medium" style={{ color: theme.heading }}>{trip.location}</p>
+                    </div>
+                  ) : null}
+                  {trip?.hotel_address ? (
+                    <div className="flex justify-between">
+                      <p style={{ color: theme.muted }}>Accommodation</p>
+                      <p className="font-medium text-right max-w-xs" style={{ color: theme.heading }}>{trip.hotel_address}</p>
+                    </div>
+                  ) : null}
+                  {!trip?.location && !trip?.hotel_address && !currentUser.isAdmin && (
+                    <p className="text-sm" style={{ color: theme.muted }}>No details added yet.</p>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* COSTS TAB */}
+        {activeTab === 'costs' && (
+          <div>
+            {/* Cost Breakdown */}
+            <div className={sectionCard} style={{ backgroundColor: theme.card, border: `1px solid ${theme.border}` }}>
+              <h3 className="text-lg font-semibold mb-4" style={{ color: theme.heading }}>Cost Breakdown</h3>
               {(() => {
                 const grouped = costs.reduce((groups, cost) => {
                   const key = cost.due_date || 'No date set'
@@ -320,77 +433,54 @@ export default function TripDetail() {
                 <p className="font-bold text-lg" style={{ color: theme.accent }}>${perPerson.toFixed(2)}</p>
               </div>
             </div>
-          )}
-        </div>
 
-        {/* Payment Schedule */}
-        <div className={sectionCard} style={{ backgroundColor: theme.card, border: `1px solid ${theme.border}` }}>
-          {!showSchedule ? (
-            <button onClick={() => setShowSchedule(true)} className="text-sm font-medium transition hover:opacity-70" style={{ color: theme.accent }}>
-              Calculate a payment schedule
-            </button>
-          ) : (
-            <div>
-              <button onClick={() => setShowSchedule(false)} className={toggleBtn}>
-                <h3 className="text-lg font-semibold" style={{ color: theme.heading }}>Payment Schedule</h3>
-                <span className="text-sm" style={{ color: theme.muted }}>▲ Hide</span>
-              </button>
-              <div className="grid grid-cols-3 gap-3 mb-6">
-                {["Weekly", "Fortnightly", "Monthly"].map(s => (
-                  <button
-                    key={s}
-                    onClick={() => setSchedule(s)}
-                    className="rounded-xl py-3 text-sm font-semibold transition border-2"
-                    style={schedule === s
-                      ? { backgroundColor: theme.accent, color: 'white', borderColor: theme.accent }
-                      : { backgroundColor: theme.card, color: theme.accent, borderColor: theme.border }
-                    }
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
-              <div className="space-y-2">
-                {getDynamicSchedule().map((payment, i) => (
-                  <div key={i} className="rounded-xl px-4 py-3" style={{
-                    backgroundColor: payment.dueItems.length > 0 ? theme.subtle : theme.bg,
-                    border: payment.dueItems.length > 0 ? `1px solid ${theme.accent}` : `1px solid ${theme.border}`
-                  }}>
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <p className="text-sm font-semibold" style={{ color: theme.heading }}>
-                          {payment.date.toLocaleDateString('en-NZ', { day: 'numeric', month: 'long', year: 'numeric' })}
-                        </p>
-                        {payment.dueItems.length > 0 && (
-                          <p className="text-xs mt-0.5" style={{ color: theme.accent }}>
-                            Covers: {payment.dueItems.map(d => d.label).join(' & ')}
-                          </p>
-                        )}
-                      </div>
-                      <div className="text-right">
-                        <p className="text-lg font-bold" style={{ color: theme.accent }}>${payment.amount.toFixed(2)}</p>
-                        <p className="text-xs" style={{ color: theme.muted }}>${payment.cumulative.toFixed(2)} total</p>
-                      </div>
-                    </div>
+            {/* Payment Schedule */}
+            <div className={sectionCard} style={{ backgroundColor: theme.card, border: `1px solid ${theme.border}` }}>
+              {!showSchedule ? (
+                <button onClick={() => setShowSchedule(true)} className="text-sm font-medium transition hover:opacity-70" style={{ color: theme.accent }}>
+                  Calculate a payment schedule
+                </button>
+              ) : (
+                <div>
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-lg font-semibold" style={{ color: theme.heading }}>Payment Schedule</h3>
+                    <button onClick={() => setShowSchedule(false)} className="text-sm" style={{ color: theme.muted }}>Hide</button>
                   </div>
-                ))}
-              </div>
-              <div className="mt-4 pt-4 border-t flex justify-between" style={{ borderColor: theme.border }}>
-                <p className="text-sm font-semibold" style={{ color: theme.heading }}>Total per person</p>
-                <p className="text-sm font-bold" style={{ color: theme.accent }}>${perPerson.toFixed(2)}</p>
-              </div>
+                  <div className="grid grid-cols-3 gap-3 mb-6">
+                    {["Weekly", "Fortnightly", "Monthly"].map(s => (
+                      <button key={s} onClick={() => setSchedule(s)} className="rounded-xl py-3 text-sm font-semibold transition border-2"
+                        style={schedule === s ? { backgroundColor: theme.accent, color: 'white', borderColor: theme.accent } : { backgroundColor: theme.card, color: theme.accent, borderColor: theme.border }}>
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="space-y-2">
+                    {getDynamicSchedule().map((payment, i) => (
+                      <div key={i} className="rounded-xl px-4 py-3" style={{ backgroundColor: payment.dueItems.length > 0 ? theme.subtle : theme.bg, border: payment.dueItems.length > 0 ? `1px solid ${theme.accent}` : `1px solid ${theme.border}` }}>
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <p className="text-sm font-semibold" style={{ color: theme.heading }}>{payment.date.toLocaleDateString('en-NZ', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                            {payment.dueItems.length > 0 && <p className="text-xs mt-0.5" style={{ color: theme.accent }}>Covers: {payment.dueItems.map(d => d.label).join(' & ')}</p>}
+                          </div>
+                          <div className="text-right">
+                            <p className="text-lg font-bold" style={{ color: theme.accent }}>${payment.amount.toFixed(2)}</p>
+                            <p className="text-xs" style={{ color: theme.muted }}>${payment.cumulative.toFixed(2)} total</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-4 pt-4 border-t flex justify-between" style={{ borderColor: theme.border }}>
+                    <p className="text-sm font-semibold" style={{ color: theme.heading }}>Total per person</p>
+                    <p className="text-sm font-bold" style={{ color: theme.accent }}>${perPerson.toFixed(2)}</p>
+                  </div>
+                </div>
+              )}
             </div>
-          )}
-        </div>
 
-        {/* Payment Tracker */}
-        <div className={sectionCard} style={{ backgroundColor: theme.card, border: `1px solid ${theme.border}` }}>
-          <button onClick={() => setShowPayments(!showPayments)} className={toggleBtn}>
-            <h3 className="text-lg font-semibold" style={{ color: theme.heading }}>Payment Tracker</h3>
-            <span className="text-sm" style={{ color: theme.muted }}>{showPayments ? '▲ Hide' : '▼ Show'}</span>
-          </button>
-          {showPayments && (
-            <div>
+            {/* Payment Tracker */}
+            <div className={sectionCard} style={{ backgroundColor: theme.card, border: `1px solid ${theme.border}` }}>
+              <h3 className="text-lg font-semibold mb-4" style={{ color: theme.heading }}>Payment Tracker</h3>
               {currentUser.isAdmin ? (
                 <div className="space-y-4 mb-6">
                   {members.map((member, i) => {
@@ -423,16 +513,13 @@ export default function TripDetail() {
                       </p>
                     </div>
                     <div className="w-full rounded-full h-2" style={{ backgroundColor: theme.border }}>
-                      <div className="h-2 rounded-full transition-all" style={{
-                        width: `${Math.min((payments.filter(p => p.user_id === currentUser.id).reduce((sum, p) => sum + p.amount, 0) / perPerson) * 100, 100).toFixed(0)}%`,
-                        backgroundColor: theme.accent
-                      }} />
+                      <div className="h-2 rounded-full transition-all" style={{ width: `${Math.min((payments.filter(p => p.user_id === currentUser.id).reduce((sum, p) => sum + p.amount, 0) / perPerson) * 100, 100).toFixed(0)}%`, backgroundColor: theme.accent }} />
                     </div>
                   </div>
                   <div className="rounded-xl p-3 text-center" style={{ backgroundColor: theme.subtle }}>
                     <p className="text-sm" style={{ color: theme.muted }}>Group progress</p>
                     <p className="text-lg font-bold" style={{ color: theme.accent }}>
-                      {members.filter(member => payments.filter(p => p.user_id === member.user_id).reduce((sum, p) => sum + p.amount, 0) >= perPerson).length} of {members.length} fully paid
+                      {members.filter(m => payments.filter(p => p.user_id === m.user_id).reduce((sum, p) => sum + p.amount, 0) >= perPerson).length} of {members.length} fully paid
                     </p>
                   </div>
                 </div>
@@ -453,24 +540,15 @@ export default function TripDetail() {
                 </div>
               </div>
             </div>
-          )}
-        </div>
 
-        {/* Payment History */}
-        <div className={sectionCard} style={{ backgroundColor: theme.card, border: `1px solid ${theme.border}` }}>
-          <button onClick={() => setShowHistory(!showHistory)} className={toggleBtn}>
-            <h3 className="text-lg font-semibold" style={{ color: theme.heading }}>Payment History</h3>
-            <span className="text-sm" style={{ color: theme.muted }}>{showHistory ? '▲ Hide' : '▼ Show'}</span>
-          </button>
-          {showHistory && (
-            <div className="space-y-3">
+            {/* Payment History */}
+            <div className={sectionCard} style={{ backgroundColor: theme.card, border: `1px solid ${theme.border}` }}>
+              <h3 className="text-lg font-semibold mb-4" style={{ color: theme.heading }}>Payment History</h3>
               {payments.length === 0 ? (
                 <p className="text-sm text-center" style={{ color: theme.muted }}>No payments yet.</p>
               ) : (
-                [...payments]
-                  .filter(p => currentUser.isAdmin ? true : p.user_id === currentUser.id)
-                  .reverse()
-                  .map((payment, i) => (
+                <div className="space-y-3">
+                  {[...payments].filter(p => currentUser.isAdmin ? true : p.user_id === currentUser.id).reverse().map((payment, i) => (
                     <div key={i} className="flex justify-between items-center pb-2 border-b last:border-0" style={{ borderColor: theme.border }}>
                       <div>
                         <p className="text-sm font-medium" style={{ color: theme.heading }}>{payment.profiles?.name}</p>
@@ -478,242 +556,212 @@ export default function TripDetail() {
                       </div>
                       <p className="text-sm font-bold" style={{ color: theme.success }}>+${payment.amount.toFixed(2)}</p>
                     </div>
-                  ))
-              )}
-              <div className="pt-2 flex justify-between items-center">
-                <p className="text-sm font-semibold" style={{ color: theme.heading }}>Total collected</p>
-                <p className="text-sm font-bold" style={{ color: theme.accent }}>
-                  ${payments.filter(p => currentUser.isAdmin ? true : p.user_id === currentUser.id).reduce((sum, p) => sum + p.amount, 0).toFixed(2)}
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Members */}
-        <div className={sectionCard} style={{ backgroundColor: theme.card, border: `1px solid ${theme.border}` }}>
-          <button onClick={() => setShowMembers(!showMembers)} className={toggleBtn}>
-            <h3 className="text-lg font-semibold" style={{ color: theme.heading }}>Members</h3>
-            <span className="text-sm" style={{ color: theme.muted }}>{showMembers ? '▲ Hide' : '▼ Show'}</span>
-          </button>
-          {showMembers && (
-            <div className="space-y-2">
-              {members.map((member, i) => (
-                <div key={i} className="flex justify-between items-center">
-                  <p className="text-sm" style={{ color: theme.heading }}>{member.profiles?.name}</p>
-                  <span className="text-xs px-2 py-1 rounded-full" style={member.is_admin ? { backgroundColor: theme.subtle, color: theme.accent } : { backgroundColor: theme.subtle, color: theme.muted }}>
-                    {member.is_admin ? 'Organiser' : 'Member'}
-                  </span>
+                  ))}
+                  <div className="pt-2 flex justify-between items-center">
+                    <p className="text-sm font-semibold" style={{ color: theme.heading }}>Total collected</p>
+                    <p className="text-sm font-bold" style={{ color: theme.accent }}>
+                      ${payments.filter(p => currentUser.isAdmin ? true : p.user_id === currentUser.id).reduce((sum, p) => sum + p.amount, 0).toFixed(2)}
+                    </p>
+                  </div>
                 </div>
-              ))}
+              )}
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
-        {/* Trip Feed */}
-        <div className={sectionCard} style={{ backgroundColor: theme.card, border: `1px solid ${theme.border}` }}>
-          <button onClick={() => setShowFeed(!showFeed)} className={toggleBtn}>
-            <h3 className="text-lg font-semibold" style={{ color: theme.heading }}>Trip Feed</h3>
-            <span className="text-sm" style={{ color: theme.muted }}>{showFeed ? '▲ Hide' : '▼ Show'}</span>
-          </button>
-          {showFeed && (
-            <div>
-              {/* Tabs */}
-              <div className="flex gap-2 mb-6">
-                <button
-                  onClick={() => setActiveFeedTab('feed')}
-                  className="px-4 py-2 rounded-lg text-sm font-semibold transition"
-                  style={activeFeedTab === 'feed' ? { backgroundColor: theme.accent, color: 'white' } : { backgroundColor: theme.subtle, color: theme.muted }}
-                >
-                  Feed
-                </button>
-                <button
-                  onClick={() => setActiveFeedTab('votes')}
-                  className="px-4 py-2 rounded-lg text-sm font-semibold transition relative"
-                  style={activeFeedTab === 'votes' ? { backgroundColor: theme.accent, color: 'white' } : { backgroundColor: theme.subtle, color: theme.muted }}
-                >
-                  Polls
-                  {votes.some(v => !v.closed && !voteResponses.find(r => r.vote_id === v.id && r.user_id === currentUser.id)) && (
-                    <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full" style={{ backgroundColor: theme.danger }} />
-                  )}
-                </button>
+        {/* SOCIAL TAB */}
+        {activeTab === 'social' && (
+          <div>
+            {/* Members */}
+            <div className={sectionCard} style={{ backgroundColor: theme.card, border: `1px solid ${theme.border}` }}>
+              <h3 className="text-lg font-semibold mb-4" style={{ color: theme.heading }}>Members</h3>
+              <div className="space-y-2">
+                {members.map((member, i) => (
+                  <div key={i} className="flex justify-between items-center">
+                    <p className="text-sm" style={{ color: theme.heading }}>{member.profiles?.name}</p>
+                    <span className="text-xs px-2 py-1 rounded-full" style={member.is_admin ? { backgroundColor: theme.subtle, color: theme.accent } : { backgroundColor: theme.subtle, color: theme.muted }}>
+                      {member.is_admin ? 'Organiser' : 'Member'}
+                    </span>
+                  </div>
+                ))}
               </div>
+            </div>
 
-              {/* Feed Tab */}
-              {activeFeedTab === 'feed' && (
-                <div>
-                  <div className="space-y-4 mb-6">
-                    {feed.length === 0 ? (
-                      <p className="text-sm text-center" style={{ color: theme.muted }}>No posts yet. Say something!</p>
-                    ) : (
-                      feed.filter(post => !post.parent_id).map(post => {
-                        const postReactions = reactions.filter(r => r.post_id === post.id)
-                        const hasReacted = postReactions.some(r => r.user_id === currentUser.id)
-                        const replies = feed.filter(r => r.parent_id === post.id)
-                        return (
-                          <div key={post.id}>
-                            <div className="flex gap-3">
-                              <div className="w-9 h-9 rounded-full font-bold flex items-center justify-center text-sm flex-shrink-0" style={{ backgroundColor: theme.subtle, color: theme.accent }}>
-                                {post.profiles?.name?.[0]}
-                              </div>
-                              <div className="rounded-xl px-4 py-3 flex-1" style={{ backgroundColor: theme.subtle }}>
-                                <div className="flex justify-between items-center mb-1">
-                                  <p className="text-sm font-semibold" style={{ color: theme.heading }}>{post.profiles?.name}</p>
-                                  <p className="text-xs" style={{ color: theme.muted }}>{new Date(post.created_at).toLocaleString()}</p>
-                                </div>
-                                <p className="text-sm mb-2" style={{ color: theme.heading }}>{post.message}</p>
-                                <div className="flex items-center gap-3">
-                                  <div className="relative group inline-block">
-                                    <button onClick={() => toggleReaction(post.id)} className="flex items-center gap-1 transition hover:opacity-70" style={{ color: hasReacted ? theme.danger : theme.muted }}>
-                                      <span className="text-xl">{hasReacted ? '♥' : '♡'}</span>
-                                      {postReactions.length > 0 && <span className="text-xs">{postReactions.length}</span>}
-                                    </button>
-                                    {postReactions.length > 0 && (
-                                      <div className="absolute bottom-full left-0 mb-2 px-3 py-2 rounded-lg text-xs opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10" style={{ backgroundColor: theme.heading, color: theme.bg }}>
-                                        <div className="flex flex-col gap-1">
-                                          {postReactions.map((r, i) => <span key={i}>{r.profiles?.name}</span>)}
-                                        </div>
-                                        <div className="absolute top-full left-3 border-4 border-transparent" style={{ borderTopColor: theme.heading }} />
-                                      </div>
-                                    )}
-                                  </div>
-                                  <button onClick={() => setReplyingTo(replyingTo === post.id ? null : post.id)} className="text-xs transition hover:opacity-70" style={{ color: theme.muted }}>
-                                    {replyingTo === post.id ? 'Cancel' : 'Reply'}
-                                  </button>
-                                </div>
-                                {replyingTo === post.id && (
-                                  <div className="flex gap-2 mt-3">
-                                    <input type="text" placeholder="Write a reply..." value={replyText} onChange={e => setReplyText(e.target.value)} onKeyDown={e => e.key === 'Enter' && addReply(post.id)} className="flex-1 rounded-lg px-3 py-1.5 text-sm focus:outline-none" style={{ border: `1px solid ${theme.border}`, color: theme.heading, backgroundColor: theme.bg }} autoFocus />
-                                    <button onClick={() => addReply(post.id)} className="text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition hover:opacity-90" style={{ backgroundColor: theme.accent }}>Send</button>
+            {/* Feed */}
+            <div className={sectionCard} style={{ backgroundColor: theme.card, border: `1px solid ${theme.border}` }}>
+              <h3 className="text-lg font-semibold mb-4" style={{ color: theme.heading }}>Trip Feed</h3>
+              <div className="space-y-4 mb-6">
+                {feed.length === 0 ? (
+                  <p className="text-sm text-center" style={{ color: theme.muted }}>No posts yet. Say something!</p>
+                ) : (
+                  feed.filter(post => !post.parent_id).map(post => {
+                    const postReactions = reactions.filter(r => r.post_id === post.id)
+                    const hasReacted = postReactions.some(r => r.user_id === currentUser.id)
+                    const replies = feed.filter(r => r.parent_id === post.id)
+                    return (
+                      <div key={post.id}>
+                        <div className="flex gap-3">
+                          <div className="w-9 h-9 rounded-full font-bold flex items-center justify-center text-sm flex-shrink-0" style={{ backgroundColor: theme.subtle, color: theme.accent }}>
+                            {post.profiles?.name?.[0]}
+                          </div>
+                          <div className="rounded-xl px-4 py-3 flex-1" style={{ backgroundColor: theme.subtle }}>
+                            <div className="flex justify-between items-center mb-1">
+                              <p className="text-sm font-semibold" style={{ color: theme.heading }}>{post.profiles?.name}</p>
+                              <p className="text-xs" style={{ color: theme.muted }}>{new Date(post.created_at).toLocaleString()}</p>
+                            </div>
+                            <p className="text-sm mb-2" style={{ color: theme.heading }}>{post.message}</p>
+                            <div className="flex items-center gap-3">
+                              <div className="relative group inline-block">
+                                <button onClick={() => toggleReaction(post.id)} className="flex items-center gap-1 transition hover:opacity-70" style={{ color: hasReacted ? theme.danger : theme.muted }}>
+                                  <span className="text-xl">{hasReacted ? '♥' : '♡'}</span>
+                                  {postReactions.length > 0 && <span className="text-xs">{postReactions.length}</span>}
+                                </button>
+                                {postReactions.length > 0 && (
+                                  <div className="absolute bottom-full left-0 mb-2 px-3 py-2 rounded-lg text-xs opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10" style={{ backgroundColor: theme.heading, color: theme.bg }}>
+                                    <div className="flex flex-col gap-1">
+                                      {postReactions.map((r, i) => <span key={i}>{r.profiles?.name}</span>)}
+                                    </div>
+                                    <div className="absolute top-full left-3 border-4 border-transparent" style={{ borderTopColor: theme.heading }} />
                                   </div>
                                 )}
                               </div>
+                              <button onClick={() => setReplyingTo(replyingTo === post.id ? null : post.id)} className="text-xs transition hover:opacity-70" style={{ color: theme.muted }}>
+                                {replyingTo === post.id ? 'Cancel' : 'Reply'}
+                              </button>
                             </div>
-                            {replies.length > 0 && (
-                              <div className="ml-12 mt-2 space-y-2">
-                                {replies.map(reply => (
-                                  <div key={reply.id} className="flex gap-3">
-                                    <div className="w-7 h-7 rounded-full font-bold flex items-center justify-center text-xs flex-shrink-0" style={{ backgroundColor: theme.subtle, color: theme.accent }}>
-                                      {reply.profiles?.name?.[0]}
-                                    </div>
-                                    <div className="rounded-xl px-3 py-2 flex-1" style={{ backgroundColor: theme.subtle, border: `1px solid ${theme.border}` }}>
-                                      <div className="flex justify-between items-center mb-1">
-                                        <p className="text-xs font-semibold" style={{ color: theme.heading }}>{reply.profiles?.name}</p>
-                                        <p className="text-xs" style={{ color: theme.muted }}>{new Date(reply.created_at).toLocaleString()}</p>
-                                      </div>
-                                      <p className="text-sm" style={{ color: theme.heading }}>{reply.message}</p>
-                                    </div>
-                                  </div>
-                                ))}
+                            {replyingTo === post.id && (
+                              <div className="flex gap-2 mt-3">
+                                <input type="text" placeholder="Write a reply..." value={replyText} onChange={e => setReplyText(e.target.value)} onKeyDown={e => e.key === 'Enter' && addReply(post.id)} className="flex-1 rounded-lg px-3 py-1.5 text-sm focus:outline-none" style={{ border: `1px solid ${theme.border}`, color: theme.heading, backgroundColor: theme.bg }} autoFocus />
+                                <button onClick={() => addReply(post.id)} className="text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition hover:opacity-90" style={{ backgroundColor: theme.accent }}>Send</button>
                               </div>
                             )}
                           </div>
-                        )
-                      })
-                    )}
+                        </div>
+                        {replies.length > 0 && (
+                          <div className="ml-12 mt-2 space-y-2">
+                            {replies.map(reply => (
+                              <div key={reply.id} className="flex gap-3">
+                                <div className="w-7 h-7 rounded-full font-bold flex items-center justify-center text-xs flex-shrink-0" style={{ backgroundColor: theme.subtle, color: theme.accent }}>
+                                  {reply.profiles?.name?.[0]}
+                                </div>
+                                <div className="rounded-xl px-3 py-2 flex-1" style={{ backgroundColor: theme.subtle, border: `1px solid ${theme.border}` }}>
+                                  <div className="flex justify-between items-center mb-1">
+                                    <p className="text-xs font-semibold" style={{ color: theme.heading }}>{reply.profiles?.name}</p>
+                                    <p className="text-xs" style={{ color: theme.muted }}>{new Date(reply.created_at).toLocaleString()}</p>
+                                  </div>
+                                  <p className="text-sm" style={{ color: theme.heading }}>{reply.message}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })
+                )}
+              </div>
+              <div className="flex gap-2">
+                <input type="text" placeholder="Leave a comment..." value={newComment} onChange={e => setNewComment(e.target.value)} onKeyDown={e => e.key === 'Enter' && addComment()} className="flex-1 rounded-lg px-4 py-2 text-sm focus:outline-none" style={{ border: `1px solid ${theme.border}`, color: theme.heading, backgroundColor: theme.bg }} />
+                <button onClick={addComment} className="text-white px-4 py-2 rounded-lg text-sm font-semibold transition hover:opacity-90" style={{ backgroundColor: theme.accent }}>Post</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* POLLS TAB */}
+        {activeTab === 'polls' && (
+          <div>
+            <div className={sectionCard} style={{ backgroundColor: theme.card, border: `1px solid ${theme.border}` }}>
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold" style={{ color: theme.heading }}>Polls</h3>
+                {currentUser.isAdmin && !showNewVote && (
+                  <button onClick={() => setShowNewVote(true)} className="text-sm font-medium transition hover:opacity-70" style={{ color: theme.accent }}>+ Create Poll</button>
+                )}
+              </div>
+
+              {showNewVote && (
+                <div className="rounded-xl p-4 space-y-3 mb-4" style={{ backgroundColor: theme.subtle, border: `1px solid ${theme.border}` }}>
+                  <p className="text-sm font-semibold" style={{ color: theme.heading }}>New Poll</p>
+                  <input type="text" placeholder="Question e.g. Which hotel should we book?" value={newVoteQuestion} onChange={e => setNewVoteQuestion(e.target.value)} className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none" style={{ border: `1px solid ${theme.border}`, color: theme.heading, backgroundColor: theme.bg }} />
+                  <div>
+                    <label className="block text-xs mb-1" style={{ color: theme.muted }}>End Date (optional)</label>
+                    <input type="date" value={newVoteEndDate} max={trip?.start_date} onChange={e => setNewVoteEndDate(e.target.value)} className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none" style={{ border: `1px solid ${theme.border}`, color: theme.heading, backgroundColor: theme.bg }} />
                   </div>
-                  <div className="flex gap-2">
-                    <input type="text" placeholder="Leave a comment..." value={newComment} onChange={e => setNewComment(e.target.value)} onKeyDown={e => e.key === 'Enter' && addComment()} className="flex-1 rounded-lg px-4 py-2 text-sm focus:outline-none" style={{ border: `1px solid ${theme.border}`, color: theme.heading, backgroundColor: theme.bg }} />
-                    <button onClick={addComment} className="text-white px-4 py-2 rounded-lg text-sm font-semibold transition hover:opacity-90" style={{ backgroundColor: theme.accent }}>Post</button>
+                  <div className="space-y-2">
+                    {newVoteOptions.map((option, i) => (
+                      <div key={i} className="flex gap-2 items-center">
+                        <input type="text" placeholder={`Option ${i + 1}`} value={option} onChange={e => updateVoteOption(i, e.target.value)} className="flex-1 rounded-lg px-3 py-2 text-sm focus:outline-none" style={{ border: `1px solid ${theme.border}`, color: theme.heading, backgroundColor: theme.bg }} />
+                        {newVoteOptions.length > 2 && <button onClick={() => removeVoteOption(i)} className="text-lg font-bold transition hover:opacity-70" style={{ color: theme.muted }}>×</button>}
+                      </div>
+                    ))}
+                    <button onClick={addVoteOption} className="text-xs transition hover:opacity-70" style={{ color: theme.accent }}>+ Add Option</button>
+                  </div>
+                  <div className="flex gap-2 pt-2">
+                    <button onClick={submitVote} className="text-white px-4 py-2 rounded-lg text-sm font-semibold transition hover:opacity-90" style={{ backgroundColor: theme.accent }}>Post Poll</button>
+                    <button onClick={() => setShowNewVote(false)} className="px-4 py-2 rounded-lg text-sm transition hover:opacity-70" style={{ color: theme.muted }}>Cancel</button>
                   </div>
                 </div>
               )}
 
-              {/* Votes Tab */}
-              {activeFeedTab === 'votes' && (
+              {votes.length === 0 ? (
+                <p className="text-sm text-center" style={{ color: theme.muted }}>No polls yet.</p>
+              ) : (
                 <div className="space-y-4">
-                  {currentUser.isAdmin && (
-                    <div>
-                      {!showNewVote ? (
-                        <button onClick={() => setShowNewVote(true)} className="text-sm font-medium transition hover:opacity-70" style={{ color: theme.accent }}>+ Create Poll</button>
-                      ) : (
-                        <div className="rounded-xl p-4 space-y-3" style={{ backgroundColor: theme.subtle, border: `1px solid ${theme.border}` }}>
-                          <p className="text-sm font-semibold" style={{ color: theme.heading }}>New Poll</p>
-                          <input type="text" placeholder="Question e.g. Which hotel should we book?" value={newVoteQuestion} onChange={e => setNewVoteQuestion(e.target.value)} className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none" style={{ border: `1px solid ${theme.border}`, color: theme.heading, backgroundColor: theme.bg }} />
+                  {votes.map(vote => {
+                    const options = voteOptions.filter(o => o.vote_id === vote.id)
+                    const responses = voteResponses.filter(r => r.vote_id === vote.id)
+                    const userResponse = responses.find(r => r.user_id === currentUser.id)
+                    const totalVotes = responses.length
+                    return (
+                      <div key={vote.id} className="rounded-xl p-4" style={{ backgroundColor: theme.subtle, border: `1px solid ${theme.border}` }}>
+                        <div className="flex justify-between items-start mb-3">
                           <div>
-                            <label className="block text-xs mb-1" style={{ color: theme.muted }}>End Date (optional, cannot be after trip start)</label>
-                            <input type="date" value={newVoteEndDate} max={trip?.start_date} onChange={e => setNewVoteEndDate(e.target.value)} className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none" style={{ border: `1px solid ${theme.border}`, color: theme.heading, backgroundColor: theme.bg }} />
+                            <p className="text-sm font-semibold" style={{ color: theme.heading }}>{vote.question}</p>
+                            {vote.end_date && <p className="text-xs mt-0.5" style={{ color: theme.muted }}>Closes {vote.end_date}</p>}
                           </div>
-                          <div className="space-y-2">
-                            {newVoteOptions.map((option, i) => (
-                              <div key={i} className="flex gap-2 items-center">
-                                <input type="text" placeholder={`Option ${i + 1}`} value={option} onChange={e => updateVoteOption(i, e.target.value)} className="flex-1 rounded-lg px-3 py-2 text-sm focus:outline-none" style={{ border: `1px solid ${theme.border}`, color: theme.heading, backgroundColor: theme.bg }} />
-                                {newVoteOptions.length > 2 && <button onClick={() => removeVoteOption(i)} className="text-lg font-bold transition hover:opacity-70" style={{ color: theme.muted }}>×</button>}
-                              </div>
-                            ))}
-                            <button onClick={addVoteOption} className="text-xs transition hover:opacity-70" style={{ color: theme.accent }}>+ Add Option</button>
-                          </div>
-                          <div className="flex gap-2 pt-2">
-                            <button onClick={submitVote} className="text-white px-4 py-2 rounded-lg text-sm font-semibold transition hover:opacity-90" style={{ backgroundColor: theme.accent }}>Post Vote</button>
-                            <button onClick={() => setShowNewVote(false)} className="px-4 py-2 rounded-lg text-sm transition hover:opacity-70" style={{ color: theme.muted }}>Cancel</button>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs px-2 py-1 rounded-full" style={vote.closed ? { backgroundColor: theme.bg, color: theme.muted } : { backgroundColor: theme.bg, color: theme.accent }}>
+                              {vote.closed ? 'Closed' : 'Open'}
+                            </span>
+                            {currentUser.isAdmin && (
+                              <button onClick={() => toggleVote(vote.id, vote.closed)} className="text-xs transition hover:opacity-70" style={{ color: theme.muted }}>
+                                {vote.closed ? 'Reopen' : 'Close'}
+                              </button>
+                            )}
                           </div>
                         </div>
-                      )}
-                    </div>
-                  )}
-
-                  {votes.length === 0 ? (
-                    <p className="text-sm text-center" style={{ color: theme.muted }}>No polls yet.</p>
-                  ) : (
-                    votes.map(vote => {
-                      const options = voteOptions.filter(o => o.vote_id === vote.id)
-                      const responses = voteResponses.filter(r => r.vote_id === vote.id)
-                      const userResponse = responses.find(r => r.user_id === currentUser.id)
-                      const totalVotes = responses.length
-                      return (
-                        <div key={vote.id} className="rounded-xl p-4" style={{ backgroundColor: theme.subtle, border: `1px solid ${theme.border}` }}>
-                          <div className="flex justify-between items-start mb-3">
-                            <div>
-                              <p className="text-sm font-semibold" style={{ color: theme.heading }}>{vote.question}</p>
-                              {vote.end_date && <p className="text-xs mt-0.5" style={{ color: theme.muted }}>Closes {vote.end_date}</p>}
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs px-2 py-1 rounded-full" style={vote.closed ? { backgroundColor: theme.bg, color: theme.muted } : { backgroundColor: theme.bg, color: theme.accent }}>
-                                {vote.closed ? 'Closed' : 'Open'}
-                              </span>
-                              {currentUser.isAdmin && (
-                                <button onClick={() => toggleVote(vote.id, vote.closed)} className="text-xs transition hover:opacity-70" style={{ color: theme.muted }}>
-                                  {vote.closed ? 'Reopen' : 'Close'}
+                        <div className="space-y-2">
+                          {options.map(option => {
+                            const optionVotes = responses.filter(r => r.option_id === option.id).length
+                            const percent = totalVotes > 0 ? Math.round((optionVotes / totalVotes) * 100) : 0
+                            const isSelected = userResponse?.option_id === option.id
+                            return (
+                              <div key={option.id}>
+                                <button onClick={() => !vote.closed && castVote(vote.id, option.id)} className="w-full text-left rounded-lg px-3 py-2 text-sm transition"
+                                  style={{ border: isSelected ? `2px solid ${theme.accent}` : `1px solid ${theme.border}`, backgroundColor: isSelected ? theme.border : theme.card, color: theme.heading, cursor: vote.closed ? 'default' : 'pointer' }}>
+                                  {option.label}
                                 </button>
-                              )}
-                            </div>
-                          </div>
-                          <div className="space-y-2">
-                            {options.map(option => {
-                              const optionVotes = responses.filter(r => r.option_id === option.id).length
-                              const percent = totalVotes > 0 ? Math.round((optionVotes / totalVotes) * 100) : 0
-                              const isSelected = userResponse?.option_id === option.id
-                              return (
-                                <div key={option.id}>
-                                  <button
-                                    onClick={() => !vote.closed && castVote(vote.id, option.id)}
-                                    className="w-full text-left rounded-lg px-3 py-2 text-sm transition"
-                                    style={{ border: isSelected ? `2px solid ${theme.accent}` : `1px solid ${theme.border}`, backgroundColor: isSelected ? theme.border : theme.card, color: theme.heading, cursor: vote.closed ? 'default' : 'pointer' }}
-                                  >
-                                    {option.label}
-                                  </button>
-                                  {(userResponse || vote.closed) && (
-                                    <div className="mt-1 px-1">
-                                      <div className="w-full rounded-full h-1.5" style={{ backgroundColor: theme.border }}>
-                                        <div className="h-1.5 rounded-full transition-all" style={{ width: `${percent}%`, backgroundColor: theme.accent }} />
-                                      </div>
-                                      <p className="text-xs mt-0.5" style={{ color: theme.muted }}>{percent}% · {optionVotes} vote{optionVotes !== 1 ? 's' : ''}</p>
+                                {(userResponse || vote.closed) && (
+                                  <div className="mt-1 px-1">
+                                    <div className="w-full rounded-full h-1.5" style={{ backgroundColor: theme.border }}>
+                                      <div className="h-1.5 rounded-full transition-all" style={{ width: `${percent}%`, backgroundColor: theme.accent }} />
                                     </div>
-                                  )}
-                                </div>
-                              )
-                            })}
-                          </div>
-                          <p className="text-xs mt-3" style={{ color: theme.muted }}>{totalVotes} vote{totalVotes !== 1 ? 's' : ''} total</p>
+                                    <p className="text-xs mt-0.5" style={{ color: theme.muted }}>{percent}% · {optionVotes} vote{optionVotes !== 1 ? 's' : ''}</p>
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })}
                         </div>
-                      )
-                    })
-                  )}
+                        <p className="text-xs mt-3" style={{ color: theme.muted }}>{totalVotes} vote{totalVotes !== 1 ? 's' : ''} total</p>
+                      </div>
+                    )
+                  })}
                 </div>
               )}
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
       </div>
     </div>

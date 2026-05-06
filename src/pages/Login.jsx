@@ -2,10 +2,11 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
 import { useTheme } from '../ThemeContext'
+import { Sun, Moon } from 'lucide-react'
 
 export default function Login() {
   const navigate = useNavigate()
-  const { theme } = useTheme()
+  const { theme, mode, toggle } = useTheme()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -34,6 +35,22 @@ export default function Login() {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: theme.bg }}>
+
+      {/* Dark/Light Toggle */}
+      <div className="fixed top-4 right-4 flex items-center gap-2">
+        {mode === 'dark' ? <Sun size={16} style={{ color: theme.muted }} /> : <Moon size={16} style={{ color: theme.muted }} />}
+        <button
+          onClick={toggle}
+          className="w-12 h-6 rounded-full transition-all relative"
+          style={{ backgroundColor: mode === 'dark' ? theme.accent : theme.border }}
+        >
+          <div
+            className="w-4 h-4 rounded-full bg-white absolute top-1 transition-all"
+            style={{ left: mode === 'dark' ? '26px' : '4px' }}
+          />
+        </button>
+      </div>
+
       <div className="rounded-2xl shadow-sm p-8 w-full max-w-md" style={{ backgroundColor: theme.card, border: `1px solid ${theme.border}` }}>
 
         <div className="text-center mb-8">
